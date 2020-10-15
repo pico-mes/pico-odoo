@@ -1,0 +1,35 @@
+image: docker:stable
+services:
+  - docker:dind
+
+stages:
+  - build
+
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_DRIVER: overlay2
+  CONTAINER_IMAGE: registry.gitlab.com/hibou-io/pico-mes/pico-odoo
+
+before_script:
+  - RELEASE=$(echo $CI_COMMIT_REF_NAME | sed "s{.*\/\(.*\)\/.*{\1{g")
+  - IMAGE_TAG=$(echo $CI_COMMIT_REF_SLUG | sed "s/^\([[:digit:]]\+\)-\([[:digit:]]\+\)/\1\.\2/g")
+  - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.gitlab.com
+
+build:
+  stage: build
+  script:
+    - docker build --pull -t $CONTAINER_IMAGE:$IMAGE_TAG .
+    - docker push $CONTAINER_IMAGE:$IMAGE_TAG
+
+merge_request:
+  variables:
+    GIT_STRATEGY: none
+  stage: build
+  only:
+    - /(^add\/)|(^new\/)|(^mig\/)|(^imp\/)|(^fix\/)/
+  script:
+    - docker pull registry.gitlab.com/hibou-io/hibou-odoo/flow
+    - docker tag registry.gitlab.com/hibou-io/hibou-odoo/flow flow
+    - ENVS=`env | grep "CI_\|GITLAB_" | sed -n '/^[^\t]/s/=.*//p' | sed '/^$/d' | sed 's/^/-e /g' | tr '\n' ' '`
+    - docker run $ENVS flow gitlab-automerge --target-branch "${RELEASE}-test" --automerge
+    - docker run $ENVS flow gitlab-automerge --remove-source
