@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <menuitem id="pico_menu" name="Pico MES"/>
+
+    <act_window id="action_pico_workflow"
+                name="Pico Workflow"
+                res_model="pico.workflow"
+                view_mode="tree,form"
+    />
+
+    <menuitem id="menu_pico_workflow"
+              name="Workflow"
+              parent="pico_menu"
+              action="action_pico_workflow"
+    />
+</odoo>

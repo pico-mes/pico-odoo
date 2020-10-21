@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_pico_workflow,access_pico_workflow,model_pico_workflow,pico_group_user,1,0,0,0
+manage_pico_workflow,manage_pico_workflow,model_pico_workflow,pico_group_manager,1,1,1,1
+access_pico_workflow_process,access_pico_workflow_process,model_pico_workflow_process,pico_group_user,1,0,0,0
+manage_pico_workflow_process,manage_pico_workflow_process,model_pico_workflow_process,pico_group_manager,1,1,1,1
+access_pico_workflow_version,access_pico_workflow_version,model_pico_workflow_version,pico_group_user,1,0,0,0
+manage_pico_workflow_version,manage_pico_workflow_version,model_pico_workflow_version,pico_group_manager,1,1,1,1

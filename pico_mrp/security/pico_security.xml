@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<odoo>
+    <record id="module_pico_workflow" model="ir.module.category">
+        <field name="name">Pico Workflow</field>
+    </record>
+
+    <!-- Pico User Group -->
+    <record id="pico_group_user" model="res.groups">
+        <field name="name">Pico User</field>
+        <field name="category_id" ref="module_pico_workflow"/>
+        <field name="implied_ids" eval="[(4,ref('base.group_user'))]"/>
+    </record>
+
+    <!-- Pico Manager Group -->
+    <record id="pico_group_manager" model="res.groups">
+        <field name="name">Pico Manager</field>
+        <field name="category_id" ref="module_pico_workflow"/>
+        <field name="implied_ids" eval="[(4,ref('pico_group_user'))]"/>
+        <field name="users" eval="[(4,ref('base.user_root')),
+                                   (4,ref('base.user_admin'))]"/>
+    </record>
+</odoo>
