@@ -1,17 +1,22 @@
 import requests
+from requests.exceptions import ConnectionError, HTTPError, InvalidSchema
 from json import dumps
 
 
 class PicoMESRequest:
-    def __init__(self, url):
+    def __init__(self, url, customer_key):
         self.url = url
-        self.headers = {"Content-Type": "application/json"}
+        self.headers = {
+            "Content-Type": "application/json",
+            'Accept': 'application/json',
+        }
+        if customer_key:
+            self.headers['x-pico-api-org'] = customer_key
 
     def post_request(self, endpoint, body):
         url = self.url + endpoint
-        result = requests.request('POST', url, headers=self.headers, data=dumps(body))
-        if result.status_code == result.codes.ok:
-            result.raise_for_status()
+        result = requests.post(url, headers=self.headers, data=dumps(body))
+        result.raise_for_status()
         return result.json()
 
     def subscribe(self, new_workflow_version_url, work_complete_url):

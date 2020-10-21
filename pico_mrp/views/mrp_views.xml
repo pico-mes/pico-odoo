@@ -6,7 +6,20 @@
         <field name="inherit_id" ref="mrp.mrp_production_form_view"/>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='bom_id']" position="after">
-                <field name="pico_workflow_version_id"/>
+                <field name="pico_workflow_version_id" options="{'no_create': True, 'no_create_edit': True}"/>
+            </xpath>
+            <xpath expr="//page[last()]" position="after">
+                <page name="pico_work_orders" string="Pico Work Orders" attrs="{'invisible': [('pico_work_order_ids', '=', [])]}">
+                    <field name="pico_work_order_ids" readonly="1">
+                        <tree>
+                            <field name="pico_id"/>
+                            <field name="process_id"/>
+                            <field name="date_start"/>
+                            <field name="date_complete"/>
+                            <field name="state"/>
+                        </tree>
+                    </field>
+                </page>
             </xpath>
         </field>
     </record>
@@ -17,7 +30,11 @@
         <field name="inherit_id" ref="mrp.mrp_bom_form_view"/>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='routing_id']" position="before">
-                <field name="pico_workflow_id"/>
+                <field name="pico_workflow_id" options="{'no_create': True, 'no_create_edit': True}"/>
+            </xpath>
+            <xpath expr="//field[@name='bom_line_ids']/tree" position="inside">
+                <field name="pico_process_id" domain="[('workflow_id', '=', parent.pico_workflow_id)]"
+                       options="{'no_create': True, 'no_create_edit': True}"/>
             </xpath>
         </field>
     </record>

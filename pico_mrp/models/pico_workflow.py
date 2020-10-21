@@ -1,15 +1,17 @@
 from odoo import api, models, fields
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError, ValidationError
 from odoo.http import request
 
-from .api.pico_requests import PicoMESRequest
+from .api.pico_requests import PicoMESRequest, ConnectionError, HTTPError, InvalidSchema
 
 
 def pico_api(env):
-    pico_url = env['ir.config_parameter'].sudo().get_param('pico.url')
+    params = env['ir.config_parameter'].sudo()
+    pico_url = params.get_param('pico.url')
+    pico_customer_key = params.get_param('pico.customer.key', None)
     if not pico_url:
         raise ValidationError('Creating Pico API requires a config parameter "pico.url"')
-    return PicoMESRequest(pico_url)
+    return PicoMESRequest(pico_url, pico_customer_key)
 
 
 class PicoMESWorkflow(models.Model):
@@ -23,15 +25,27 @@ class PicoMESWorkflow(models.Model):
     process_ids = fields.One2many('pico.workflow.process', 'workflow_id', string='Child Processes')
     version_ids = fields.One2many('pico.workflow.version', 'workflow_id', string='Child Versions')
 
-    def _get_url_token(self):
+    def pico_subscribe(self):
+        api = pico_api(self.env)
+        base_url = self._get_base_url()
+        try:
+            api.subscribe(base_url + '/picoapi/new-workflow-version', base_url + '/picoapi/work-complete')
+        except InvalidSchema:
+            raise UserError('Invalid Pico Endpoint URL (%s)' % (api.url, ))
+        except ConnectionError:
+            raise UserError('Cannot connect to Pico Endpoint URL (%s)' % (api.url, ))
+        except HTTPError:
+            raise UserError('Webhook Subscribe resulted in an error from Pico Endpoint URL (%s)' % (api.url, ))
+
+    def _get_base_url(self):
         return request and request.httprequest.url_root or self.env['ir.config_parameter'].sudo().get_param('web.base.url')
 
     @api.model
     def process_pico_data(self, values):
         return self._sync_data(values)
 
-    # TODO: uncomment when ready to use decorator
-    # @job(default_channel='root.picoapi')
+    # TODO do we NEED a job here? tests are difficult
+    # @job(default_channel='root.pico')
     def _sync_data(self, values):
         """ if data received has new fields, update model to match
             else missing, archive out of sink models

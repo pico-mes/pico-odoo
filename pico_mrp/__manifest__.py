@@ -3,6 +3,7 @@
     'author': "Hibou Corp.",
     'depends': [
         'mrp',
+        'queue_job',
     ],
     'demo': [],
     'data': [
@@ -11,7 +12,9 @@
         'views/mrp_views.xml',
         'views/pico_menu.xml',
         'views/pico_workflow_view.xml',
+        'views/res_config_settings_views.xml',
     ],
     'auto_install': False,
     'installable': True,
+    'application': True,
 }
