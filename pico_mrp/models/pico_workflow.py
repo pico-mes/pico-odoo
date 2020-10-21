@@ -38,7 +38,8 @@ class PicoMESWorkflow(models.Model):
             raise UserError('Webhook Subscribe resulted in an error from Pico Endpoint URL (%s)' % (api.url, ))
 
     def _get_base_url(self):
-        return request and request.httprequest.url_root or self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        base_url = request and request.httprequest.url_root or self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        return base_url.rstrip('/')
 
     @api.model
     def process_pico_data(self, values):
