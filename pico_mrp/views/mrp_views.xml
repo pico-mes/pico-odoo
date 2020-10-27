@@ -6,7 +6,10 @@
         <field name="inherit_id" ref="mrp.mrp_production_form_view"/>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='bom_id']" position="after">
-                <field name="pico_workflow_version_id" options="{'no_create': True, 'no_create_edit': True}"/>
+                <field name="pico_workflow_id" invisible="1"/>
+                <field name="pico_workflow_version_id" options="{'no_create': True, 'no_create_edit': True}"
+                       domain="[('workflow_id', '=', pico_workflow_id)]"
+                       attrs="{'readonly': [('state', '!=', 'draft')]}"/>
             </xpath>
             <xpath expr="//page[last()]" position="after">
                 <page name="pico_work_orders" string="Pico Work Orders" attrs="{'invisible': [('pico_work_order_ids', '=', [])]}">

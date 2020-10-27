@@ -8,6 +8,7 @@ class MRPProduction(models.Model):
     _inherit = 'mrp.production'
 
     pico_workflow_version_id = fields.Many2one('pico.workflow.version', string='Pico Workflow Version ID')
+    pico_workflow_id = fields.Many2one(related='bom_id.pico_workflow_id')
     pico_work_order_ids = fields.One2many('mrp.production.pico.work.order', 'production_id',
                                           string='Pico Work Orders')
 
@@ -68,6 +69,15 @@ class MRPBoM(models.Model):
     _inherit = 'mrp.bom'
 
     pico_workflow_id = fields.Many2one('pico.workflow', string='Pico Workflow ID')
+
+    @api.onchange('pico_workflow_id')
+    def _onchange_pico_workflow(self):
+        empty_pico_process = self.env['pico.workflow.process'].browse()
+        for bom in self:
+            pico_workflow = bom.pico_workflow_id
+            for line in bom.bom_line_ids.filtered(lambda l: l.pico_process_id and
+                                                            l.pico_process_id not in pico_workflow.process_ids):
+                line.pico_process_id = empty_pico_process
 
 
 class MRPBoMLine(models.Model):

@@ -19,9 +19,13 @@ class PicoMESRequest:
         result.raise_for_status()
         return result.json()
 
-    def subscribe(self, new_workflow_version_url, work_complete_url):
-        body = {'newWorkflowVersionUrl': new_workflow_version_url, 'workCompleteUrl': work_complete_url}
-        return self.post_request('/subscribe', body)
+    def subscribe_jsonrpc(self, endpoint_url, new_workflow_version_method, work_order_complete_method):
+        body = {
+            'rpcHostUrl': endpoint_url,
+            'newWorkflowVersionMethod': new_workflow_version_method,
+            'workOrderCompleteMethod': work_order_complete_method,
+        }
+        return self.post_request('/subscribe_jsonrpc', body)
 
     def create_work_order(self, process_id, workflow_version_id, annotation=''):
         body = {"processId": process_id, 'workflowVersionId': workflow_version_id, 'annotation': annotation}

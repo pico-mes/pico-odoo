@@ -26,14 +26,15 @@ class TestWorkflow(TransactionCase):
         super().setUp()
         self.admin_user = self.env.ref('base.user_admin')
 
-        def subscribe(self, new_workflow_version_url, work_complete_url):
-            _logger.warn('called subscribe %s' % ([new_workflow_version_url, work_complete_url], ))
+        def subscribe_jsonrpc(self, endpoint_url, new_workflow_version_method, work_order_complete_method):
+            _logger.warn('called subscribe_jsonrpc %s' % ([endpoint_url, new_workflow_version_method, work_order_complete_method],))
             return {}
 
         def create_work_order(self, process_id, workflow_version_id, annotation=''):
             _logger.warn('called create_work_order %s' % ([process_id, workflow_version_id, annotation], ))
             return {'id': str(process_id) + str(workflow_version_id) + str(annotation)}
-        pico_requests.PicoMESRequest.subscribe = subscribe
+
+        pico_requests.PicoMESRequest.subscribe_jsonrpc = subscribe_jsonrpc
         pico_requests.PicoMESRequest.create_work_order = create_work_order
 
         parameters = self.env['ir.config_parameter'].sudo()

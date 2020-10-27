@@ -29,7 +29,7 @@ class PicoMESWorkflow(models.Model):
         api = pico_api(self.env)
         base_url = self._get_base_url()
         try:
-            api.subscribe(base_url + '/picoapi/new-workflow-version', base_url + '/picoapi/work-complete')
+            api.subscribe_jsonrpc(base_url + '/picoapi/webhook', 'newWorkflowVersionMethod', 'workOrderCompleteMethod')
         except InvalidSchema:
             raise UserError('Invalid Pico Endpoint URL (%s)' % (api.url, ))
         except ConnectionError:
