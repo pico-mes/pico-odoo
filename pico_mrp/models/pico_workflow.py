@@ -115,18 +115,59 @@ class PicoMESWorkflow(models.Model):
         # processes that need updated
         existing_processes = original_processes.filtered(lambda p: p.pico_id in process_dict)
         for p in existing_processes:
+            new_vals = {}
             if p.name != process_dict[p.pico_id].get('name', ''):
-                line_commands.append((1, p.id, {'name': process_dict[p.pico_id].get('name', '')}))
+                new_vals['name'] = process_dict[p.pico_id].get('name', '')
+            attr_commands = self._reconcile_process_attrs(p, process_dict[p.pico_id])
+            if attr_commands:
+                new_vals['attr_ids'] = attr_commands
+            if new_vals:
+                line_commands.append((1, p.id, new_vals))
         # processes to archive (missing from current state)
         processes_to_archive = original_processes - existing_processes
         line_commands += [(1, p.id, {'active': False}) for p in processes_to_archive]
         # create new processes that are missing
         for p_id, values in process_dict.items():
             if p_id not in original_process_pico_ids:
-                line_commands.append((0, 0, {'pico_id': p_id, 'name': values.get('name', '')}))
+                new_vals = {'pico_id': p_id, 'name': values.get('name', '')}
+                attr_commands = self._reconcile_process_attrs(None, values)
+                if attr_commands:
+                    new_vals['attr_ids'] = attr_commands
+                line_commands.append((0, 0, new_vals))
 
         if line_commands:
             self.write({'process_ids': line_commands})
+
+    def _reconcile_process_attrs(self, odoo_process, process):
+        line_commands = []
+        attrs_dict = {a['id']: a for a in process.get('attrs', [])}
+        original_attrs = odoo_process and odoo_process.attr_ids or self.env['pico.workflow.process.attr']
+        original_pico_ids = original_attrs.mapped('pico_id')
+        # update existing attrs
+        existing_attrs = original_attrs.filtered(lambda a: a.pico_id in attrs_dict)
+        for a in existing_attrs:
+            new_vals = {}
+            if a.name != attrs_dict[a.pico_id].get('label', ''):
+                new_vals['name'] = attrs_dict[a.pico_id].get('label', '')
+            if process.get('produced_attr_id') == a.pico_id and a.type != 'produce':
+                new_vals['type'] = 'produce'
+            if a.pico_id in process.get('consumed_attr_ids', []) and a.type != 'consume':
+                new_vals['type'] = 'consume'
+            if new_vals:
+                line_commands.append((1, a.id, new_vals))
+        # unlink any non existing attrs
+        attrs_to_unlink = original_attrs - existing_attrs
+        line_commands += [(3, a.id, 0) for a in attrs_to_unlink]
+        # create new attrs
+        for a_id, values in attrs_dict.items():
+            if a_id not in original_pico_ids:
+                vals = {'name': values.get('label', ''), 'pico_id': a_id}
+                if process.get('produced_attr_id') == a_id:
+                    vals['type'] = 'produce'
+                elif a_id in process.get('consumed_attr_ids', []):
+                    vals['type'] = 'consume'
+                line_commands.append((0, 0, vals))
+        return line_commands
 
 
 class PicoMESProcess(models.Model):
@@ -136,8 +177,23 @@ class PicoMESProcess(models.Model):
     active = fields.Boolean(default=True)
     name = fields.Char("Name")
     pico_id = fields.Char("Process ID")
+    attr_ids = fields.One2many('pico.workflow.process.attr', 'process_id', string='Attrs')
 
     workflow_id = fields.Many2one('pico.workflow', string='Parent Workflow')
+
+
+class PicoMESProcessAttr(models.Model):
+    _name = 'pico.workflow.process.attr'
+    _description = 'Process Attr'
+
+    process_id = fields.Many2one('pico.workflow.process')
+    type = fields.Selection([
+        ('produce', 'Produce'),
+        ('consume', 'Consume'),
+        ('other', 'Other'),
+    ], string='Type', default='other')
+    name = fields.Char("Name")
+    pico_id = fields.Char("Attr ID")
 
 
 class PicoMESVersion(models.Model):

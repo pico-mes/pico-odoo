@@ -49,7 +49,11 @@ class TestWorkflow(TransactionCase):
             'process_ids': [(0, 0, {
                 'name': 'Test Process',
                 'pico_id': '370',
-                'workflow_id': workflow.id
+                'workflow_id': workflow.id,
+                'attr_ids': [
+                    (0, 0, {'pico_id': 'a101', 'name': 'A 101', 'type': 'produce'}),
+                    (0, 0, {'pico_id': 'a102', 'name': 'A 102', 'type': 'consume'}),
+                ],
             })],
             'version_ids': [(0, 0, {
                 'pico_id': 'v12',
@@ -60,6 +64,9 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(workflow.name, "Test Flow", "Expected to have created a workflow")
         self.assertEqual(len(workflow.process_ids), 1, "Expected to have one process")
         self.assertEqual(workflow.process_ids.pico_id, '370', "Expected process to have same pico_id")
+        self.assertEqual(len(workflow.process_ids.attr_ids), 2, "Expected to have 2 process attrs.")
+        self.assertEqual(workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'produce').name, 'A 101')
+        self.assertEqual(workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'consume').name, 'A 102')
 
     def test_sync_data_add(self):
         response_data = {
@@ -69,7 +76,15 @@ class TestWorkflow(TransactionCase):
                 "name": "Test Flow",
                 "processes": [{
                     "id": "p18",
-                    "name": "test process"
+                    "name": "test process",
+                    'attrs': [
+                        {'id': 'a101', 'label': 'A 101'},
+                        {'id': 'a102', 'label': 'A 102'},
+                    ],
+                    'produced_attr_id': 'a101',
+                    'consumed_attr_ids': [
+                        'a102',
+                    ],
                 }]
             }
         }
@@ -78,12 +93,18 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(workflow.version_ids.pico_id, 'v12', "Expected version to be equal")
         self.assertEqual(len(workflow.process_ids), 1, "Expected to have one process")
         self.assertEqual(workflow.process_ids.pico_id, 'p18', "Expected process to be equal")
+        self.assertEqual(len(workflow.process_ids.attr_ids), 2, "Expected to have 2 process attrs.")
+        self.assertEqual(workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'produce').name, 'A 101')
+        self.assertEqual(workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'consume').name, 'A 102')
 
         response_data["workflow"]["processes"].append({'id': 'p19'})
         workflow = self.env['pico.workflow'].process_pico_data(response_data)
         self.assertEqual(len(workflow.version_ids), 1, "Expected to have one version")
         self.assertEqual(workflow.version_ids.pico_id, 'v12', "Expected version to be equal")
         self.assertEqual(len(workflow.process_ids), 2, "Expected to have two processes")
+        self.assertEqual(len(workflow.process_ids.attr_ids), 2, "Expected to have 2 process attrs.")
+        self.assertEqual(workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'produce').name, 'A 101')
+        self.assertEqual(workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'consume').name, 'A 102')
 
         del response_data["workflow"]["processes"][0]
         workflow = self.env['pico.workflow'].process_pico_data(response_data)
@@ -117,10 +138,9 @@ class TestWorkflow(TransactionCase):
     def test_mrp(self):
         # get product with known bom
         product = self.env.ref('mrp.product_product_wood_panel')
-        # TODO handle serials
-        product.tracking = 'none'
+        product.tracking = 'serial'
         for line in product.bom_ids.bom_line_ids:
-            line.product_id.tracking = 'none'
+            line.product_id.tracking = 'serial'
 
         self.assertFalse(product.bom_ids.pico_workflow_id.pico_id, "Expect no Pico Workflow set")
 
@@ -132,6 +152,10 @@ class TestWorkflow(TransactionCase):
             'process_ids': [(0, 0, {
                 'name': 'Test Process',
                 'pico_id': '370',
+                'attr_ids': [
+                    (0, 0, {'pico_id': 'a1', 'name': 'A1', 'type': 'produce'}),
+                    (0, 0, {'pico_id': 'a2', 'name': 'A2', 'type': 'consume'}),
+                ]
             })],
             'version_ids': [(0, 0, {
                 'pico_id': 'v12',
@@ -148,6 +172,7 @@ class TestWorkflow(TransactionCase):
         # consume all of the lines when this process completes
         product.bom_ids.bom_line_ids.write({
             'pico_process_id': workflow.process_ids.id,
+            'pico_attr_id': workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'consume').id,
         })
         self.assertEqual(product.bom_ids.pico_workflow_id.pico_id, "w156", "Expect Pico Workflow set")
 
@@ -176,14 +201,21 @@ class TestWorkflow(TransactionCase):
         self.assertTrue(mo.pico_work_order_ids.state, 'running')  # only because we are not queueing it
 
         # simulate complete
-        mo.pico_work_order_ids.pico_complete({
+        mo.pico_work_order_ids.with_context(skip_queue_job=True).pico_complete({
             "id": "string",
             "attributes": [
+                # Finished Serial
                 {
-                    "id": "string",
-                    "label": "string",
-                    "value": "string"
-                }
+                    "id": "a1",
+                    "label": "A1",
+                    "value": "F101",
+                },
+                # Consumed Serial
+                {
+                    "id": "a2",
+                    "label": "A2",
+                    "value": "C101",
+                },
             ],
             "startedAt": "2020-10-01T10:40:50.043Z",
             "completedAt": "2020-10-02T10:40:50.043Z",
@@ -199,3 +231,5 @@ class TestWorkflow(TransactionCase):
         for sm in mo.move_raw_ids:
             self.assertEqual(sm.quantity_done, sm.product_uom_qty)
         self.assertEqual(mo.state, 'done')
+        self.assertEqual(mo.finished_move_line_ids.lot_id.name, 'F101')
+        # self.assertEqual(mo.move_raw_ids.mapped('move_line_ids.lot_id.name'), 'C101')
