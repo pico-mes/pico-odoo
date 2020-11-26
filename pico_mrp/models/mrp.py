@@ -37,10 +37,15 @@ class MRPProduction(models.Model):
                 work_order.pico_create()
 
     def action_confirm(self):
+        for production in self.filtered(lambda l: l.pico_workflow_version_id):
+            production.pico_validate_bom_setup()
         res = super().action_confirm()
-        for s in self.filtered(lambda l: l.pico_workflow_version_id):
-            s._pico_create_work_orders()
+        for production in self.filtered(lambda l: l.pico_workflow_version_id):
+            production._pico_create_work_orders()
         return res
+
+    def pico_validate_bom_setup(self):
+        self.bom_id.pico_workflow_id.validate_bom_setup(self.bom_id, should_raise=True)
 
     @job(default_channel='root.pico')
     def pico_complete(self):
@@ -101,7 +106,8 @@ class MRPProduction(models.Model):
 
 
 class MRPBoM(models.Model):
-    _inherit = 'mrp.bom'
+    _name = 'mrp.bom'
+    _inherit = ['mrp.bom', 'mail.activity.mixin']
 
     pico_workflow_id = fields.Many2one('pico.workflow', string='Pico Workflow ID')
 

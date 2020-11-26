@@ -5,6 +5,9 @@
         <field name="model">pico.workflow</field>
         <field name="arch" type="xml">
             <form string="Workflow">
+                <header>
+                    <button name="button_validate_bom_setup" class="oe_highlight" string="Validate BoMs" type="object"/>
+                </header>
                 <group>
                     <field name="name"/>
                     <field name="pico_id"/>

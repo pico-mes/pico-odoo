@@ -42,6 +42,9 @@
                 <field name="pico_attr_id" domain="[('process_id', '=', pico_process_id), ('type', '=', 'consume')]"
                        options="{'no_create': True, 'no_create_edit': True}"/>
             </xpath>
+            <xpath expr="//field[@name='message_ids']" position="before">
+                <field name="activity_ids" widget="mail_activity"/>
+            </xpath>
         </field>
     </record>
 </odoo>

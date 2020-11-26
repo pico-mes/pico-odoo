@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from datetime import datetime
+from collections import defaultdict
 import mock
 
 from odoo.tests.common import TransactionCase
@@ -40,6 +41,32 @@ class TestWorkflow(TransactionCase):
         parameters = self.env['ir.config_parameter'].sudo()
         parameters.set_param('pico.url', 'http://test:9000')
 
+        # get product with known bom
+        self.product = self.env.ref('mrp.product_product_wood_panel')
+        self.product.tracking = 'serial'
+        for line in self.product.bom_ids.bom_line_ids:
+            line.product_id.tracking = 'serial'
+
+        self.bom_activity = self.env.ref('pico_mrp.mail_activity_type_bom_map_needed')
+        self.workflow_activities = defaultdict(lambda: self.env['mail.activity'].browse())
+
+    def _product_add_workflow(self, workflow):
+        self.product.bom_ids.pico_workflow_id = workflow
+        # consume all of the lines when this process completes
+        self.product.bom_ids.bom_line_ids.write({
+            'pico_process_id': workflow.process_ids.id,
+            'pico_attr_id': workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'consume').id,
+        })
+
+    def _new_workflow_activities(self, workflow):
+        activities = self.env['mail.activity'].search([
+            ('activity_type_id', '=', self.bom_activity.id),
+            ('res_model_id', '=', self.env.ref('mrp.model_mrp_bom').id),
+            ('res_id', 'not in', self.workflow_activities[workflow].ids),
+        ])
+        self.workflow_activities[workflow] += activities
+        return activities
+
     def test_creation(self):
         workflow = self.env['pico.workflow'].with_user(self.admin_user).create({
             'name': 'Test Flow',
@@ -69,6 +96,9 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'consume').name, 'A 102')
 
     def test_sync_data_add(self):
+        # use new workflow process on BoM
+        self.assertFalse(self.product.bom_ids.pico_workflow_id.pico_id, "Expect no Pico Workflow set")
+
         response_data = {
             "id": "v12",
             "workflow": {
@@ -97,6 +127,14 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'produce').name, 'A 101')
         self.assertEqual(workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'consume').name, 'A 102')
 
+        # Add workflow to product's BoM
+        # Should be 'valid' already, so no activity should have been created.
+        self._product_add_workflow(workflow)
+        workflow.validate_bom_setup()
+        activities = self._new_workflow_activities(workflow)
+        self.assertFalse(activities)
+
+
         response_data["workflow"]["processes"].append({'id': 'p19'})
         workflow = self.env['pico.workflow'].process_pico_data(response_data)
         self.assertEqual(len(workflow.version_ids), 1, "Expected to have one version")
@@ -106,12 +144,22 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'produce').name, 'A 101')
         self.assertEqual(workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'consume').name, 'A 102')
 
+        # This change added a process, but should not have invalidated this BoM
+        workflow.validate_bom_setup()
+        activities = self._new_workflow_activities(workflow)
+        self.assertFalse(activities)
+
         del response_data["workflow"]["processes"][0]
         workflow = self.env['pico.workflow'].process_pico_data(response_data)
         self.assertEqual(len(workflow.version_ids), 1, "Expected to have one version")
         self.assertEqual(workflow.version_ids.pico_id, 'v12', "Expected version to be equal")
         self.assertEqual(len(workflow.process_ids), 1, "Expected to have one process")
         self.assertEqual(workflow.process_ids.pico_id, 'p19', "Expected process to be equal")
+
+        # This deleted (archived) the original process, therefor the BoM is now invalid
+        workflow.validate_bom_setup()
+        activities = self._new_workflow_activities(workflow)
+        self.assertTrue(activities)
 
         response_data["workflow"]["processes"] = [{'id': 'p20'}, {'id': 'p21'}, {'id': 'p22'}, {'id': 'p23'}]
         workflow = self.env['pico.workflow'].process_pico_data(response_data)
@@ -136,13 +184,7 @@ class TestWorkflow(TransactionCase):
         self.assertTrue(isinstance(res, dict))
 
     def test_mrp(self):
-        # get product with known bom
-        product = self.env.ref('mrp.product_product_wood_panel')
-        product.tracking = 'serial'
-        for line in product.bom_ids.bom_line_ids:
-            line.product_id.tracking = 'serial'
-
-        self.assertFalse(product.bom_ids.pico_workflow_id.pico_id, "Expect no Pico Workflow set")
+        self.assertFalse(self.product.bom_ids.pico_workflow_id.pico_id, "Expect no Pico Workflow set")
 
         workflow = self.env['pico.workflow'].with_user(self.admin_user).create({
             'name': 'Test Flow',
@@ -168,18 +210,13 @@ class TestWorkflow(TransactionCase):
             'workflow_id': workflow.id,
         })
 
-        product.bom_ids.pico_workflow_id = workflow
-        # consume all of the lines when this process completes
-        product.bom_ids.bom_line_ids.write({
-            'pico_process_id': workflow.process_ids.id,
-            'pico_attr_id': workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'consume').id,
-        })
-        self.assertEqual(product.bom_ids.pico_workflow_id.pico_id, "w156", "Expect Pico Workflow set")
+        self._product_add_workflow(workflow)
+        self.assertEqual(self.product.bom_ids.pico_workflow_id.pico_id, "w156", "Expect Pico Workflow set")
 
         mo = self.env['mrp.production'].create({
-            'product_id': product.id,
-            'bom_id': product.bom_ids.id,
-            'product_uom_id': product.uom_id.id,
+            'product_id': self.product.id,
+            'bom_id': self.product.bom_ids.id,
+            'product_uom_id': self.product.uom_id.id,
         })
         self.assertEqual(mo.state, "draft")
         # we have 1 inactive and 1 active version, but we will have pre-assigned the active one

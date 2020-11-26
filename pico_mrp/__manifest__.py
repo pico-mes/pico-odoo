@@ -9,6 +9,7 @@
     'data': [
         'security/pico_security.xml',
         'security/ir.model.access.csv',
+        'data/activity_data.xml',
         'views/mrp_views.xml',
         'views/pico_menu.xml',
         'views/pico_workflow_view.xml',

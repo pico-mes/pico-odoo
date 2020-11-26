@@ -1,4 +1,4 @@
-from odoo import api, models, fields
+from odoo import api, models, fields, SUPERUSER_ID
 from odoo.exceptions import UserError, ValidationError
 from odoo.http import request
 
@@ -12,6 +12,10 @@ def pico_api(env):
     if not pico_url:
         raise ValidationError('Creating Pico API requires a config parameter "pico.url"')
     return PicoMESRequest(pico_url, pico_customer_key)
+
+
+class PicoBoMNeedsMap(ValidationError):
+    pass
 
 
 class PicoMESWorkflow(models.Model):
@@ -44,6 +48,53 @@ class PicoMESWorkflow(models.Model):
     @api.model
     def process_pico_data(self, values):
         return self._sync_data(values)
+
+    def button_validate_bom_setup(self):
+        no_errors = self.validate_bom_setup()
+        if not no_errors:
+            # TODO this warning is not visible
+            # This would be visible during an onchange... investigate if there is an action
+            # that could show it, grep has failed me so far...
+            return {
+                'warning': {'title': 'Warning', 'message': 'BoM Activities Scheduled.'}
+            }
+        return no_errors
+
+    def validate_bom_setup(self, boms=None, should_raise=False):
+        res = True
+        for workflow in self:
+            if not boms:
+                boms = self.env['mrp.bom'].search([
+                    ('pico_workflow_id', '=', workflow.id),
+                ])
+            for bom in boms:
+                try:
+                    self._validate_bom_setup(bom)
+                except PicoBoMNeedsMap:
+                    if should_raise:
+                        raise
+                    res = False
+                    bom.activity_schedule(
+                        'pico_mrp.mail_activity_type_bom_map_needed',
+                        user_id=bom.product_tmpl_id.responsible_id.id or SUPERUSER_ID,
+                        note='The Pico Workflow requires setup or mapping consumed attributes.'
+                    )
+        return res
+
+    def _validate_bom_setup(self, bom):
+        # 1. All process attr's that are marked 'to consume' must be on a BoM Line
+        process_attrs_to_consume = bom.pico_workflow_id.process_ids\
+            .filtered(lambda p: p.active)\
+            .mapped('attr_ids').filtered(lambda a: a.type == 'consume')
+
+        bom_attrs_to_consume = bom.bom_line_ids.mapped('pico_attr_id')
+        if process_attrs_to_consume != bom_attrs_to_consume:
+            raise PicoBoMNeedsMap('Not all consumption attrs are mapped to BoM Lines.')
+
+        #2. All BoM lines who's product trackig is (lot/serial) must have an associated consume attr
+        lines = bom.bom_line_ids.filtered(lambda l: l.product_id.tracking in ('lot', 'serial') and not l.pico_attr_id)
+        if lines:
+            raise PicoBoMNeedsMap('Not all lot/serialized items are mapped to a pico attribute.')
 
     # TODO do we NEED a job here? tests are difficult
     # @job(default_channel='root.pico')
@@ -78,6 +129,9 @@ class PicoMESWorkflow(models.Model):
         # reconcile processes
         processes = workflow_data.get('processes', [])
         workflow._reconcile_processes(processes)
+
+        # validate all BoMs
+        workflow.validate_bom_setup()
         return workflow
 
     def _get_values_from_pico_data(self, values):
