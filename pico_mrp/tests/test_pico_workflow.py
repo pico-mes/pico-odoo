@@ -51,7 +51,8 @@ class TestWorkflow(TransactionCase):
         self.workflow_activities = defaultdict(lambda: self.env['mail.activity'].browse())
 
     def _product_add_workflow(self, workflow):
-        self.product.bom_ids.pico_workflow_id = workflow
+        # Assumes single process...
+        self.product.bom_ids.pico_process_id = workflow.process_ids
         # consume all of the lines when this process completes
         self.product.bom_ids.bom_line_ids.write({
             'pico_process_id': workflow.process_ids.id,
@@ -135,11 +136,21 @@ class TestWorkflow(TransactionCase):
         self.assertFalse(activities)
 
 
-        response_data["workflow"]["processes"].append({'id': 'p19'})
+        # The new p19 should ultimately go into the p18 production or have 'producing_process_id' == p18
+        response_data["workflow"]["processes"].insert(0, {'id': 'p19'})
         workflow = self.env['pico.workflow'].process_pico_data(response_data)
         self.assertEqual(len(workflow.version_ids), 1, "Expected to have one version")
         self.assertEqual(workflow.version_ids.pico_id, 'v12', "Expected version to be equal")
         self.assertEqual(len(workflow.process_ids), 2, "Expected to have two processes")
+        # normally, the order comes from the sequence, but we need to order it intentionally
+        # because they are ordered when selected from the database, not when inserted....
+        processes = workflow.process_ids.sorted(lambda p: p.sequence)
+        p0 = processes[0]
+        p1 = processes[1]
+        self.assertEqual(p0.pico_id, 'p19')
+        self.assertEqual(p0.producing_process_id, p1)
+        self.assertEqual(p1.pico_id, 'p18')
+        self.assertFalse(p1.producing_process_id)
         self.assertEqual(len(workflow.process_ids.attr_ids), 2, "Expected to have 2 process attrs.")
         self.assertEqual(workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'produce').name, 'A 101')
         self.assertEqual(workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'consume').name, 'A 102')
@@ -149,7 +160,7 @@ class TestWorkflow(TransactionCase):
         activities = self._new_workflow_activities(workflow)
         self.assertFalse(activities)
 
-        del response_data["workflow"]["processes"][0]
+        del response_data["workflow"]["processes"][1]
         workflow = self.env['pico.workflow'].process_pico_data(response_data)
         self.assertEqual(len(workflow.version_ids), 1, "Expected to have one version")
         self.assertEqual(workflow.version_ids.pico_id, 'v12', "Expected version to be equal")
@@ -211,7 +222,7 @@ class TestWorkflow(TransactionCase):
         })
 
         self._product_add_workflow(workflow)
-        self.assertEqual(self.product.bom_ids.pico_workflow_id.pico_id, "w156", "Expect Pico Workflow set")
+        self.assertEqual(self.product.bom_ids.pico_process_id.pico_id, "370", "Expect Pico Process set")
 
         mo = self.env['mrp.production'].create({
             'product_id': self.product.id,
@@ -220,14 +231,7 @@ class TestWorkflow(TransactionCase):
         })
         self.assertEqual(mo.state, "draft")
         # we have 1 inactive and 1 active version, but we will have pre-assigned the active one
-        self.assertEqual(mo.pico_workflow_version_id, workflow.version_ids)
-        # assigning inactive to pretend that this MO 'found' the other one before it was inactive
-        mo.pico_workflow_version_id = v11
-        with self.assertRaises(UserError):
-            # not allowed to start a MO with an inactive version
-            mo.action_confirm()
-        # assign the active version
-        mo.pico_workflow_version_id = workflow.version_ids
+        self.assertEqual(mo.pico_process_id, workflow.process_ids)
 
         mo._onchange_move_raw()
         with self.mock_with_delay() as (delayable_cls, delayable):

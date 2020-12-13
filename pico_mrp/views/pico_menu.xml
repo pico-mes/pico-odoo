@@ -6,6 +6,7 @@
                 name="Pico Workflow"
                 res_model="pico.workflow"
                 view_mode="tree,form"
+                context="{'create': False}"
     />
 
     <menuitem id="menu_pico_workflow"

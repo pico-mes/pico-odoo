@@ -7,29 +7,14 @@ from odoo.addons.pico_mrp.models.pico_workflow import pico_api
 class MRPProduction(models.Model):
     _inherit = 'mrp.production'
 
-    pico_workflow_version_id = fields.Many2one('pico.workflow.version', string='Pico Workflow Version ID')
-    pico_workflow_id = fields.Many2one(related='bom_id.pico_workflow_id')
+    pico_process_id = fields.Many2one(related='bom_id.pico_process_id')
     pico_work_order_ids = fields.One2many('mrp.production.pico.work.order', 'production_id',
                                           string='Pico Work Orders')
-
-    @api.model
-    def create(self, values):
-        if 'pico_workflow_version_id' not in values and 'bom_id' in values:
-            bom = self.env['mrp.bom'].browse(values['bom_id'])
-            if bom.pico_workflow_id and bom.pico_workflow_id.version_ids:
-                values['pico_workflow_version_id'] = bom.pico_workflow_id.version_ids[0].id
-        res = super(MRPProduction, self).create(values)
-        return res
-
-    @api.onchange('bom_id')
-    def _onchange_pico_bom_id(self):
-        if self.bom_id.pico_workflow_id and self.bom_id.pico_workflow_id.version_ids:
-            self.pico_workflow_version_id = self.bom_id.pico_workflow_id.version_ids[0]
 
     def _pico_create_work_orders(self):
         model = self.env['mrp.production.pico.work.order'].sudo()
         for i in range(int(self.product_qty)):
-            for p in self.pico_workflow_version_id.workflow_id.process_ids:
+            for p in self.pico_process_id.process_ids:
                 work_order = model.create({
                     'production_id': self.id,
                     'process_id': p.id,
@@ -37,10 +22,10 @@ class MRPProduction(models.Model):
                 work_order.pico_create()
 
     def action_confirm(self):
-        for production in self.filtered(lambda l: l.pico_workflow_version_id):
+        for production in self.filtered(lambda l: l.pico_process_id):
             production.pico_validate_bom_setup()
         res = super().action_confirm()
-        for production in self.filtered(lambda l: l.pico_workflow_version_id):
+        for production in self.filtered(lambda l: l.pico_process_id):
             production._pico_create_work_orders()
         return res
 
@@ -57,7 +42,7 @@ class MRPProduction(models.Model):
             for pending in pending_work_orders:
                 if not work_orders.filtered(lambda wo: wo.process_id == pending.process_id):
                     work_orders += pending
-            if work_orders.mapped('process_id') == self.pico_workflow_version_id.workflow_id.process_ids:
+            if work_orders.mapped('process_id') == self.pico_process_id.process_ids:
                 # work_orders is a 'complete set'
                 # reduce the pending work orders
                 pending_work_orders -= work_orders
@@ -109,16 +94,21 @@ class MRPBoM(models.Model):
     _name = 'mrp.bom'
     _inherit = ['mrp.bom', 'mail.activity.mixin']
 
-    pico_workflow_id = fields.Many2one('pico.workflow', string='Pico Workflow ID')
+    pico_process_id = fields.Many2one('pico.workflow.process', string='Pico Process ID')
+    pico_workflow_id = fields.Many2one(related='pico_process_id.workflow_id', string='Pico Workflow ID', store=True)
 
-    @api.onchange('pico_workflow_id')
-    def _onchange_pico_workflow(self):
+    @api.onchange('pico_process_id')
+    def _onchange_pico_process(self):
         empty_pico_process = self.env['pico.workflow.process'].browse()
         for bom in self:
-            pico_workflow = bom.pico_workflow_id
-            for line in bom.bom_line_ids.filtered(lambda l: l.pico_process_id and
-                                                            l.pico_process_id not in pico_workflow.process_ids):
-                line.pico_process_id = empty_pico_process
+            if bom.pico_process_id:
+                pico_processes = bom.pico_process_id.process_ids
+                for line in bom.bom_line_ids.filtered(lambda l: l.pico_process_id and
+                                                                l.pico_process_id not in pico_processes):
+                    line.pico_process_id = empty_pico_process
+            else:
+                for line in bom.bom_line_ids:
+                    line.pico_process_id = empty_pico_process
 
 
 class MRPBoMLine(models.Model):

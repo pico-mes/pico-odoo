@@ -52,11 +52,14 @@ class PicoMESWorkflow(models.Model):
     def button_validate_bom_setup(self):
         no_errors = self.validate_bom_setup()
         if not no_errors:
-            # TODO this warning is not visible
-            # This would be visible during an onchange... investigate if there is an action
-            # that could show it, grep has failed me so far...
             return {
-                'warning': {'title': 'Warning', 'message': 'BoM Activities Scheduled.'}
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Notice',
+                    'message': 'BoM Activities Scheduled.',
+                    'sticky': False,
+                },
             }
         return no_errors
 
@@ -64,8 +67,13 @@ class PicoMESWorkflow(models.Model):
         res = True
         for workflow in self:
             if not boms:
+                # Need to specifically find archived processes,
+                # because BoM's for archived processes are not valid
+                processes = self.env['pico.workflow.process'].with_context(active_test=False).search([
+                    ('workflow_id', '=', workflow.id),
+                ])
                 boms = self.env['mrp.bom'].search([
-                    ('pico_workflow_id', '=', workflow.id),
+                    ('pico_process_id', 'in', processes.ids),
                 ])
             for bom in boms:
                 try:
@@ -82,16 +90,22 @@ class PicoMESWorkflow(models.Model):
         return res
 
     def _validate_bom_setup(self, bom):
+        # implied: inactive process shouldn't be used in a BoM
+        if bom.pico_process_id and not bom.pico_process_id.active:
+            raise PicoBoMNeedsMap('BoM Linked to Archived Process.')
+        lines = bom.bom_line_ids.filtered(lambda l: l.pico_process_id and not l.pico_process_id.active)
+        if lines:
+            raise PicoBoMNeedsMap('BoM Line(s) linked to Archived Process.')
+
         # 1. All process attr's that are marked 'to consume' must be on a BoM Line
-        process_attrs_to_consume = bom.pico_workflow_id.process_ids\
-            .filtered(lambda p: p.active)\
+        process_attrs_to_consume = bom.pico_process_id.process_ids\
             .mapped('attr_ids').filtered(lambda a: a.type == 'consume')
 
         bom_attrs_to_consume = bom.bom_line_ids.mapped('pico_attr_id')
         if process_attrs_to_consume != bom_attrs_to_consume:
             raise PicoBoMNeedsMap('Not all consumption attrs are mapped to BoM Lines.')
 
-        #2. All BoM lines who's product trackig is (lot/serial) must have an associated consume attr
+        # 2. All BoM lines who's product trackig is (lot/serial) must have an associated consume attr
         lines = bom.bom_line_ids.filtered(lambda l: l.product_id.tracking in ('lot', 'serial') and not l.pico_attr_id)
         if lines:
             raise PicoBoMNeedsMap('Not all lot/serialized items are mapped to a pico attribute.')
@@ -161,7 +175,7 @@ class PicoMESWorkflow(models.Model):
         # commands to write on process_ids
         line_commands = []
         # pre-process for easy reconcile
-        process_dict = {p['id']: p for p in process_list}
+        process_dict = {p['id']: (i, p) for i, p in enumerate(process_list, 1)}
 
         original_processes = self.process_ids
         # all of our external pico_ids
@@ -170,9 +184,12 @@ class PicoMESWorkflow(models.Model):
         existing_processes = original_processes.filtered(lambda p: p.pico_id in process_dict)
         for p in existing_processes:
             new_vals = {}
-            if p.name != process_dict[p.pico_id].get('name', ''):
-                new_vals['name'] = process_dict[p.pico_id].get('name', '')
-            attr_commands = self._reconcile_process_attrs(p, process_dict[p.pico_id])
+            sequence, process_vals = process_dict[p.pico_id]
+            if p.name != process_vals.get('name', ''):
+                new_vals['name'] = process_vals.get('name', '')
+            if sequence != p.sequence:
+                new_vals['sequence'] = sequence
+            attr_commands = self._reconcile_process_attrs(p, process_vals)
             if attr_commands:
                 new_vals['attr_ids'] = attr_commands
             if new_vals:
@@ -181,9 +198,10 @@ class PicoMESWorkflow(models.Model):
         processes_to_archive = original_processes - existing_processes
         line_commands += [(1, p.id, {'active': False}) for p in processes_to_archive]
         # create new processes that are missing
-        for p_id, values in process_dict.items():
+        for p_id, seq_vals in process_dict.items():
+            sequence, values = seq_vals
             if p_id not in original_process_pico_ids:
-                new_vals = {'pico_id': p_id, 'name': values.get('name', '')}
+                new_vals = {'pico_id': p_id, 'name': values.get('name', ''), 'sequence': sequence}
                 attr_commands = self._reconcile_process_attrs(None, values)
                 if attr_commands:
                     new_vals['attr_ids'] = attr_commands
@@ -191,6 +209,21 @@ class PicoMESWorkflow(models.Model):
 
         if line_commands:
             self.write({'process_ids': line_commands})
+            # propagate producing_process_id
+            # we only need to do this if we were going to create or otherwise write to processes
+            line_commands = []
+            pico_producing = self.process_ids.browse()  # Empty record to use .id == False
+            for process in self.process_ids.sorted(lambda p: -p.sequence):  # Essentially reversed()
+                if process.attr_ids.filtered(lambda a: a.type == 'produce'):
+                    # this process itself produces
+                    if process.producing_process_id:
+                        line_commands.append((1, process.id, {'producing_process_id': False}))
+                    pico_producing = process
+                else:
+                    if process.producing_process_id != pico_producing:
+                        line_commands.append((1, process.id, {'producing_process_id': pico_producing.id}))
+            if line_commands:
+                self.write({'process_ids': line_commands})
 
     def _reconcile_process_attrs(self, odoo_process, process):
         line_commands = []
@@ -227,13 +260,26 @@ class PicoMESWorkflow(models.Model):
 class PicoMESProcess(models.Model):
     _name = 'pico.workflow.process'
     _description = 'Process'
+    _order = 'workflow_id, sequence'
 
     active = fields.Boolean(default=True)
     name = fields.Char("Name")
     pico_id = fields.Char("Process ID")
     attr_ids = fields.One2many('pico.workflow.process.attr', 'process_id', string='Attrs')
+    sequence = fields.Integer("Sequence", default=1)
+    producing_process_id = fields.Many2one('pico.workflow.process', string='Producing Process')
 
     workflow_id = fields.Many2one('pico.workflow', string='Parent Workflow')
+
+    process_ids = fields.One2many('pico.workflow.process', string='Related Processes',
+                                  compute='_compute_process_ids')
+
+    @api.depends('workflow_id.process_ids.producing_process_id')
+    def _compute_process_ids(self):
+        for process in self:
+            process.process_ids = process.workflow_id.process_ids.filtered(lambda p:
+                                                                           p == process
+                                                                           or p.producing_process_id == process)
 
 
 class PicoMESProcessAttr(models.Model):
