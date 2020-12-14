@@ -69,6 +69,8 @@ class MRPProduction(models.Model):
             return serial
 
         produce = self.env['mrp.product.produce'].with_context(default_production_id=self.id).create({})
+        produce._generate_produce_lines()
+
         if produce.serial:
             # requires finished serial number
             serial_name = work_orders.find_finished_serial()
@@ -79,7 +81,6 @@ class MRPProduction(models.Model):
             produce.finished_lot_id = serial
         for line in produce.raw_workorder_line_ids.filtered(lambda line: line.product_tracking in ('lot', 'serial')):
             serial_name = work_orders.find_consumed_serial(line.move_id.bom_line_id)
-            raise ValueError(serial_name)
             if not serial_name:
                 raise ValueError('Stock Move requires a consumed serial, but none provided.')
             serial = _serial(line.product_id, serial_name)
@@ -197,7 +198,7 @@ class MRPPicoWorkOrder(models.Model):
 
     def find_consumed_serial(self, bom_line):
         # self will be a 'complete set' of work orders
-        attr_values = self.mapped('attr_value_ids').filtered(lambda av: av.attr_id == bom_line.pico_attr_value_id)
+        attr_values = self.mapped('attr_value_ids').filtered(lambda av: av.attr_id == bom_line.pico_attr_id)
         if not attr_values:
             return None
         return attr_values[0].value

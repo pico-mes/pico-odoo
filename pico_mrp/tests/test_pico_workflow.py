@@ -45,7 +45,10 @@ class TestWorkflow(TransactionCase):
         self.product = self.env.ref('mrp.product_product_wood_panel')
         self.product.tracking = 'serial'
         for line in self.product.bom_ids.bom_line_ids:
-            line.product_id.tracking = 'serial'
+            # Note that serial should be possible, but would require more produce setup because this
+            # product was procured and it will not be able to update the history with serial.
+            line.product_id.tracking = 'lot'
+        self.product.bom_ids.bom_line_ids[1:].unlink()
 
         self.bom_activity = self.env.ref('pico_mrp.mail_activity_type_bom_map_needed')
         self.workflow_activities = defaultdict(lambda: self.env['mail.activity'].browse())
@@ -273,4 +276,4 @@ class TestWorkflow(TransactionCase):
             self.assertEqual(sm.quantity_done, sm.product_uom_qty)
         self.assertEqual(mo.state, 'done')
         self.assertEqual(mo.finished_move_line_ids.lot_id.name, 'F101')
-        # self.assertEqual(mo.move_raw_ids.mapped('move_line_ids.lot_id.name'), 'C101')
+        self.assertEqual(mo.move_raw_ids.mapped('move_line_ids.lot_id.name'), ['C101'])
