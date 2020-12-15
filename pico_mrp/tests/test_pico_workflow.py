@@ -55,11 +55,18 @@ class TestWorkflow(TransactionCase):
 
     def _product_add_workflow(self, workflow):
         # Assumes single process...
-        self.product.bom_ids.pico_process_id = workflow.process_ids
+        produce_process = workflow.process_ids.filtered(lambda p: p.attr_ids.filtered(lambda a: a.type == 'produce'))
+        self.assertTrue(produce_process)
+        self.assertEqual(len(produce_process), 1)
+        self.product.bom_ids.pico_process_id = produce_process
+        consume_process = workflow.process_ids.filtered(lambda p: p.attr_ids.filtered(lambda a: a.type == 'consume'))
+        self.assertTrue(consume_process)
+        self.assertEqual(len(consume_process), 1)
         # consume all of the lines when this process completes
         self.product.bom_ids.bom_line_ids.write({
-            'pico_process_id': workflow.process_ids.id,
-            'pico_attr_id': workflow.process_ids.attr_ids.filtered(lambda a: a.type == 'consume').id,
+            'pico_process_id': consume_process.id,
+            'pico_attr_id': consume_process.attr_ids.filtered(lambda a: a.type == 'consume').id,
+            'product_qty': 1.0,
         })
 
     def _new_workflow_activities(self, workflow):
@@ -242,7 +249,8 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(mo.state, "confirmed", "Expect mo to be in confirm state")
         # process created pico work order(s)
         self.assertTrue(mo.pico_work_order_ids)
-        self.assertTrue(mo.pico_work_order_ids.state, 'running')  # only because we are not queueing it
+        self.assertEqual(mo.pico_work_order_ids.state, 'draft')  # only because we are not queueing it
+        self.assertFalse(mo.pico_work_order_ids._workorder_should_consume_in_real_time())  # should prefer to consume as 'set' of 1
 
         # simulate complete
         mo.pico_work_order_ids.with_context(skip_queue_job=True).pico_complete({
@@ -277,3 +285,128 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(mo.state, 'done')
         self.assertEqual(mo.finished_move_line_ids.lot_id.name, 'F101')
         self.assertEqual(mo.move_raw_ids.mapped('move_line_ids.lot_id.name'), ['C101'])
+
+    def test_mrp_multi_process(self, reserve_inventory=False):
+        self.assertFalse(self.product.bom_ids.pico_workflow_id.pico_id, "Expect no Pico Workflow set")
+
+        workflow = self.env['pico.workflow'].with_user(self.admin_user).create({
+            'name': 'Test Flow',
+            'pico_id': 'w156'
+        })
+        workflow.write({
+            'process_ids': [(0, 0, {
+                'name': 'Test Process',
+                'pico_id': '370',
+                'attr_ids': [
+                    (0, 0, {'pico_id': 'a1', 'name': 'A1', 'type': 'produce'}),
+                ],
+                'sequence': 2,
+            })],
+            'version_ids': [(0, 0, {
+                'pico_id': 'v12',
+            })],
+        })
+        process2 = workflow.process_ids
+        process1 = process2.create({
+            'name': 'Test Pre-Process',
+            'pico_id': '369',
+            'attr_ids': [
+                (0, 0, {'pico_id': 'a2', 'name': 'A2', 'type': 'consume'}),
+            ],
+            'sequence': 1,
+            'producing_process_id': process2.id,
+            'workflow_id': workflow.id,
+        })
+
+
+        self._product_add_workflow(workflow)
+        self.assertEqual(self.product.bom_ids.pico_process_id.pico_id, "370", "Expect Pico Process set")
+
+        mo = self.env['mrp.production'].create({
+            'product_id': self.product.id,
+            'bom_id': self.product.bom_ids.id,
+            'product_uom_id': self.product.uom_id.id,
+            'product_qty': 1.0,
+        })
+        self.assertEqual(mo.state, "draft")
+        # we have 1 inactive and 1 active version, but we will have pre-assigned the active one
+        self.assertEqual(mo.pico_process_id, workflow.process_ids.sorted('sequence')[1])
+
+        mo._onchange_move_raw()
+        with self.mock_with_delay() as (delayable_cls, delayable):
+            mo.action_confirm()
+            if reserve_inventory:
+                mo.action_assign()
+        self.assertEqual(mo.state, "confirmed", "Expect mo to be in confirm state")
+        # process created pico work order(s)
+        self.assertTrue(mo.pico_work_order_ids)
+
+        work_order1 = mo.pico_work_order_ids.filtered(lambda w: w.process_id == process1)
+        work_order2 = mo.pico_work_order_ids.filtered(lambda w: w.process_id == process2)
+        self.assertTrue(work_order1)
+        self.assertTrue(work_order2)
+        self.assertEqual(work_order1.state, 'draft')  # would be running if it was sent to pico
+        self.assertEqual(work_order2.state, 'draft')
+        self.assertTrue(work_order1._workorder_should_consume_in_real_time())
+
+        # simulate complete of one work order
+        work_order1.with_context(skip_queue_job=True).pico_complete({
+            "id": "string",
+            "attributes": [
+                # Consumed Serial
+                {
+                    "id": "a2",
+                    "label": "A2",
+                    "value": "C101",
+                },
+            ],
+            "startedAt": "2020-10-01T10:40:50.043Z",
+            "completedAt": "2020-10-02T10:40:50.043Z",
+            "cycleTime": 0,
+            "workflowId": "string",
+            "processId": "string",
+            "workOrderId": "string"
+        })
+
+        self.assertEqual(work_order1.state, 'pending')
+        self.assertEqual(work_order1.date_start, datetime(2020, 10, 1, 10, 40, 50))
+        self.assertEqual(work_order1.date_complete, datetime(2020, 10, 2, 10, 40, 50))
+        self.assertEqual(work_order2.state, 'draft')
+
+        # because this MO was for 1.0 and all the lot/serial products are 1.0 qty,
+        # finishing the first work order should have consumed the materials.
+        self.assertEqual(mo.mapped('move_raw_ids.move_line_ids.qty_done'), [1.0])
+        self.assertEqual(mo.mapped('move_raw_ids.move_line_ids.lot_id.name'), ['C101'])
+
+        self.assertEqual(mo.state, 'confirmed')  # not 'done'
+
+        # simulate completion of second work order
+        work_order2.with_context(skip_queue_job=True).pico_complete({
+            "id": "string",
+            "attributes": [
+                # Finished Serial
+                {
+                    "id": "a1",
+                    "label": "A1",
+                    "value": "F101",
+                },
+            ],
+            "startedAt": "2020-10-03T10:40:50.043Z",
+            "completedAt": "2020-10-04T10:40:50.043Z",
+            "cycleTime": 0,
+            "workflowId": "string",
+            "processId": "string",
+            "workOrderId": "string"
+        })
+        self.assertEqual(work_order1.state, 'done')
+        self.assertEqual(work_order2.state, 'done')
+        self.assertEqual(work_order2.date_start, datetime(2020, 10, 3, 10, 40, 50))
+        self.assertEqual(work_order2.date_complete, datetime(2020, 10, 4, 10, 40, 50))
+
+        self.assertEqual(mo.state, 'done')
+        self.assertEqual(mo.mapped('move_raw_ids.move_line_ids.qty_done'), [1.0], 'We over consumed.')
+        self.assertEqual(mo.mapped('move_raw_ids.move_line_ids.lot_id.name'), ['C101'])
+        self.assertEqual(mo.finished_move_line_ids.lot_id.name, 'F101')
+
+    def test_mrp_multi_process_with_reserve(self):
+        self.test_mrp_multi_process(reserve_inventory=True)
