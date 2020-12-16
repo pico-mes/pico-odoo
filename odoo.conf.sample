@@ -1,7 +1,7 @@
 [options]
 addons_path = /opt/odoo/pico,/opt/odoo/hibou-suite,/opt/odoo/odoo/addons
 data_dir = /var/lib/odoo
-server_wide_modules = web
+server_wide_modules = web,queue_job
 admin_passwd = pico_admin
 db_host = db
 db_user = odoo
@@ -44,6 +44,5 @@ workers = 0
 ;new_relic_config_file = /etc/odoo/newrelic.ini
 ;new_relic_environment = production
 
-;[queue_job]
-;channels = root:1
-
+[queue_job]
+channels = root:1,root.pico:1
