@@ -159,7 +159,7 @@ class MRPPicoWorkOrder(models.Model):
     def _pico_create(self):
         api = pico_api(self.env)
         process_result = api.create_work_order(self.process_id.pico_id,
-                                               self.production_id.pico_workflow_version_id.pico_id,
+                                               self.process_id.workflow_id.version_ids.pico_id,
                                                self.production_id.name)
         self.write({
             'pico_id': process_result['id'],
