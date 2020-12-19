@@ -158,8 +158,9 @@ class MRPPicoWorkOrder(models.Model):
     @job(default_channel='root.pico')
     def _pico_create(self):
         api = pico_api(self.env)
+        version = self.process_id.workflow_id.version_ids[0]
         process_result = api.create_work_order(self.process_id.pico_id,
-                                               self.production_id.pico_workflow_version_id.pico_id,
+                                               version.pico_id,
                                                self.production_id.name)
         self.write({
             'pico_id': process_result['id'],

@@ -246,11 +246,31 @@ class TestWorkflow(TransactionCase):
         mo._onchange_move_raw()
         with self.mock_with_delay() as (delayable_cls, delayable):
             mo.action_confirm()
-        self.assertEqual(mo.state, "confirmed", "Expect mo to be in confirm state")
-        # process created pico work order(s)
-        self.assertTrue(mo.pico_work_order_ids)
-        self.assertEqual(mo.pico_work_order_ids.state, 'draft')  # only because we are not queueing it
-        self.assertFalse(mo.pico_work_order_ids._workorder_should_consume_in_real_time())  # should prefer to consume as 'set' of 1
+            self.assertEqual(mo.state, "confirmed", "Expect mo to be in confirm state")
+            # process created pico work order(s)
+            self.assertTrue(mo.pico_work_order_ids)
+            self.assertEqual(len(mo.pico_work_order_ids), 1)
+            work_order = mo.pico_work_order_ids
+            self.assertEqual(work_order.state, 'draft')
+            self.assertFalse(work_order._workorder_should_consume_in_real_time())  # should prefer to consume as 'set' of 1
+            self.assertEqual(delayable_cls.call_count, 1)
+
+            # how was the queue job configured
+            delay_args, delay_kwargs = delayable_cls.call_args
+            self.assertEqual((work_order, ), delay_args)
+
+            # how should the queue job fire
+            self.assertFalse(delayable.call_args)
+            delayable._pico_create.assert_called_once_with()
+
+            # call actual
+            work_order._pico_create()
+            self.assertEqual(work_order.state, 'running')
+            # The patched work order create process pattern in setUp()
+            self.assertEqual(work_order.pico_id, '%s%s%s' % (
+                work_order.process_id.pico_id,
+                work_order.process_id.workflow_id.version_ids.pico_id,
+                mo.name))
 
         # simulate complete
         mo.pico_work_order_ids.with_context(skip_queue_job=True).pico_complete({
