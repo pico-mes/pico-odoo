@@ -110,8 +110,6 @@ class PicoMESWorkflow(models.Model):
         if lines:
             raise PicoBoMNeedsMap('Not all lot/serialized items are mapped to a pico attribute.')
 
-    # TODO do we NEED a job here? tests are difficult
-    # @job(default_channel='root.pico')
     def _sync_data(self, values):
         """ if data received has new fields, update model to match
             else missing, archive out of sink models
