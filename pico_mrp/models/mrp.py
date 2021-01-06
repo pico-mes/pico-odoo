@@ -1,5 +1,4 @@
 from odoo import api, models, fields
-from odoo.addons.queue_job.job import job
 
 from odoo.addons.pico_mrp.models.pico_workflow import pico_api
 
@@ -32,10 +31,7 @@ class MRPProduction(models.Model):
     def pico_validate_bom_setup(self):
         self.bom_id.pico_workflow_id.validate_bom_setup(self.bom_id, should_raise=True)
 
-    @job(default_channel='root.pico')
     def pico_complete(self):
-        # This is called from a queue job, so we need to sudo to get correct permissions
-        self = self.sudo()
         pending_work_orders = self.pico_work_order_ids.filtered(lambda wo: wo.state == 'pending')
         while pending_work_orders:
             work_orders = self.env['mrp.production.pico.work.order'].browse()
@@ -153,9 +149,8 @@ class MRPPicoWorkOrder(models.Model):
     attr_value_ids = fields.One2many('mrp.pico.work.order.attr.value', 'work_order_id', string='Attr. Values')
 
     def pico_create(self):
-        self.with_delay()._pico_create()
+        self._pico_create()
 
-    @job(default_channel='root.pico')
     def _pico_create(self):
         api = pico_api(self.env)
         version = self.process_id.workflow_id.version_ids[0]
@@ -241,10 +236,7 @@ class MRPPicoWorkOrder(models.Model):
                         })]
                     })
 
-        if self._context.get('skip_queue_job'):
-            self.production_id.pico_complete()
-        else:
-            self.production_id.with_delay().pico_complete()
+        self.production_id.pico_complete()
 
     def find_finished_serial(self):
         # self will be a 'complete set' of work orders

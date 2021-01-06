@@ -3,7 +3,6 @@
     'author': "Hibou Corp.",
     'depends': [
         'mrp',
-        'queue_job',
     ],
     'demo': [],
     'data': [

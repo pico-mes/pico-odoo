@@ -1,7 +1,5 @@
-from contextlib import contextmanager
 from datetime import datetime
 from collections import defaultdict
-import mock
 
 from odoo.tests.common import TransactionCase
 from odoo.exceptions import ValidationError, UserError
@@ -13,15 +11,6 @@ _logger = getLogger(__name__)
 
 
 class TestWorkflow(TransactionCase):
-    @contextmanager
-    def mock_with_delay(self):
-        with mock.patch('odoo.addons.queue_job.models.base.DelayableRecordset',
-                        name='DelayableRecordset', spec=True
-                        ) as delayable_cls:
-            # prepare the mocks
-            delayable = mock.MagicMock(name='DelayableBinding')
-            delayable_cls.return_value = delayable
-            yield delayable_cls, delayable
 
     def setUp(self):
         super().setUp()
@@ -244,36 +233,24 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(mo.pico_process_id, workflow.process_ids)
 
         mo._onchange_move_raw()
-        with self.mock_with_delay() as (delayable_cls, delayable):
-            mo.action_confirm()
-            self.assertEqual(mo.state, "confirmed", "Expect mo to be in confirm state")
-            # process created pico work order(s)
-            self.assertTrue(mo.pico_work_order_ids)
-            self.assertEqual(len(mo.pico_work_order_ids), 1)
-            work_order = mo.pico_work_order_ids
-            self.assertEqual(work_order.state, 'draft')
-            self.assertFalse(work_order._workorder_should_consume_in_real_time())  # should prefer to consume as 'set' of 1
-            self.assertEqual(delayable_cls.call_count, 1)
 
-            # how was the queue job configured
-            delay_args, delay_kwargs = delayable_cls.call_args
-            self.assertEqual((work_order, ), delay_args)
-
-            # how should the queue job fire
-            self.assertFalse(delayable.call_args)
-            delayable._pico_create.assert_called_once_with()
-
-            # call actual
-            work_order._pico_create()
-            self.assertEqual(work_order.state, 'running')
-            # The patched work order create process pattern in setUp()
-            self.assertEqual(work_order.pico_id, '%s%s%s' % (
-                work_order.process_id.pico_id,
-                work_order.process_id.workflow_id.version_ids.pico_id,
-                mo.name))
+        mo.action_confirm()
+        self.assertEqual(mo.state, "confirmed", "Expect mo to be in confirm state")
+        # process created pico work order(s)
+        self.assertTrue(mo.pico_work_order_ids)
+        self.assertEqual(len(mo.pico_work_order_ids), 1)
+        work_order = mo.pico_work_order_ids
+        self.assertEqual(work_order.state, 'running')
+        self.assertFalse(work_order._workorder_should_consume_in_real_time())  # should prefer to consume as 'set' of 1
+        
+        # The patched work order create process pattern in setUp()
+        self.assertEqual(work_order.pico_id, '%s%s%s' % (
+            work_order.process_id.pico_id,
+            work_order.process_id.workflow_id.version_ids.pico_id,
+            mo.name))
 
         # simulate complete
-        mo.pico_work_order_ids.with_context(skip_queue_job=True).pico_complete({
+        mo.pico_work_order_ids.pico_complete({
             "id": "string",
             "attributes": [
                 # Finished Serial
@@ -353,10 +330,9 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(mo.pico_process_id, workflow.process_ids.sorted('sequence')[1])
 
         mo._onchange_move_raw()
-        with self.mock_with_delay() as (delayable_cls, delayable):
-            mo.action_confirm()
-            if reserve_inventory:
-                mo.action_assign()
+        mo.action_confirm()
+        if reserve_inventory:
+            mo.action_assign()
         self.assertEqual(mo.state, "confirmed", "Expect mo to be in confirm state")
         # process created pico work order(s)
         self.assertTrue(mo.pico_work_order_ids)
@@ -365,12 +341,12 @@ class TestWorkflow(TransactionCase):
         work_order2 = mo.pico_work_order_ids.filtered(lambda w: w.process_id == process2)
         self.assertTrue(work_order1)
         self.assertTrue(work_order2)
-        self.assertEqual(work_order1.state, 'draft')  # would be running if it was sent to pico
-        self.assertEqual(work_order2.state, 'draft')
+        self.assertEqual(work_order1.state, 'running')
+        self.assertTrue(work_order2.state, 'running')
         self.assertTrue(work_order1._workorder_should_consume_in_real_time())
 
         # simulate complete of one work order
-        work_order1.with_context(skip_queue_job=True).pico_complete({
+        work_order1.pico_complete({
             "id": "string",
             "attributes": [
                 # Consumed Serial
@@ -391,7 +367,7 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(work_order1.state, 'pending')
         self.assertEqual(work_order1.date_start, datetime(2020, 10, 1, 10, 40, 50))
         self.assertEqual(work_order1.date_complete, datetime(2020, 10, 2, 10, 40, 50))
-        self.assertEqual(work_order2.state, 'draft')
+        self.assertEqual(work_order2.state, 'running')
 
         # because this MO was for 1.0 and all the lot/serial products are 1.0 qty,
         # finishing the first work order should have consumed the materials.
