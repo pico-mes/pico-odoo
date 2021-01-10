@@ -1,6 +1,6 @@
 {
     'name': 'Pico MES Integration',
-    'author': "Hibou Corp.",
+    'author': 'Pico MES',
     'depends': [
         'mrp',
     ],
