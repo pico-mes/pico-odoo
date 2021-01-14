@@ -12,15 +12,21 @@ Odoo manufacturing add-ons to connect to Pico MES
 
 1. Add pico-odoo as a Git submodule following the [Odoo Submodule instructions](https://www.odoo.com/documentation/user/13.0/odoo_sh/advanced/submodules.html).
    - Use this repository URL: `git@github.com:pico-mes/pico-odoo.git`
-   - Select branch: `13.0-test`
+   - Select branch: `13.0`
    - Path: `pico-mes/pico-odoo` _(can leave as the default)_
 
 # Installation and Configuration
 
-1. After following the steps above, update the Apps list via developer mode if you don't see the Pico MES connector in the listing.
+After following the steps above, we now need to install the connector in Odoo's interface. To do this:
+
+1. Search for the Pico app in Odoo's Apps page. If you don't see it, you'll need to update the Apps list with the developer mode by following these steps:
+   - Go to Settings, then find the Developer Tools section and click on "Activate the developer mode"
+   - Go back to Apps back. In the top bar there should be a button to "Update apps list." Click on this, and then within the pop-up click on "Update"
+   - You should now be able to find the Pico app in the Apps list.
 1. Install the Pico MES connector through Apps list.
 1. Once installed go to **Settings**, select **Manufacturing**, and enter `https://api.picomes.com` and the Pico MES provided api key in the Pico MES section, then click Save.
 1. Return to the Manufacturing Settings and click **Subscribe to Webhooks**.
+1. Once this is complete, check a specific User's permissions. In the "Other" section make sure the user is a Pico Manager or Pico User in the Pico Workflow dropdown menu.
 
 # Development Environment Setup
 
