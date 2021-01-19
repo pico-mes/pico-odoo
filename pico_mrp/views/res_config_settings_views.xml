@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+
+    <record id="res_config_settings_view_form_inherit" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.mrp.inherit</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="mrp.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@data-key='mrp']//div[contains(@class, 'o_settings_container')][1]" position="after">
+                <h2>Pico MES</h2>
+                <div class="row mt16 o_settings_container">
+                    <div class="col-lg-6 col-12 o_setting_box" id="mrp_pico" title="Manufacture using Pico MES">
+                        <div class="o_setting_left_pane"/>
+                        <div class="o_setting_right_pane">
+                            <div class="content-group mt16">
+                                <label for="pico_url"/>
+                                <field name="pico_url"/>
+                                <label for="pico_customer_key"/>
+                                <field name="pico_customer_key"/>
+                                <p>Save Settings before subscribing to webhooks.</p>
+                                <button name="pico_endpoint_subscribe" type="object" string="Subscribe to Webhooks"
+                                        attrs="{'invisible': [('pico_url', '=', False)]}"/>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

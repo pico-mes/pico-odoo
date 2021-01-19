@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <record id="mrp_production_form_view_inherit" model="ir.ui.view">
+        <field name="name">mrp.production.form.inherit</field>
+        <field name="model">mrp.production</field>
+        <field name="inherit_id" ref="mrp.mrp_production_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='bom_id']" position="after">
+                <field name="pico_process_id" />
+            </xpath>
+            <xpath expr="//page[last()]" position="after">
+                <page name="pico_work_orders" string="Pico Work Orders" attrs="{'invisible': [('pico_work_order_ids', '=', [])]}">
+                    <field name="pico_work_order_ids" readonly="1">
+                        <tree>
+                            <field name="pico_id"/>
+                            <field name="process_id"/>
+                            <field name="date_start"/>
+                            <field name="date_complete"/>
+                            <field name="state"/>
+                            <field name="attr_value_ids" widget="many2many_tags"/>
+                        </tree>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="mrp_bom_form_view_inherit" model="ir.ui.view">
+        <field name="name">mrp.bom.form.inherit</field>
+        <field name="model">mrp.bom</field>
+        <field name="inherit_id" ref="mrp.mrp_bom_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='routing_id']" position="before">
+                <field name="pico_process_id" domain="[('producing_process_id', '=', False)]" options="{'no_create': True, 'no_create_edit': True}"/>
+                <field name="pico_workflow_id" />
+            </xpath>
+            <xpath expr="//field[@name='bom_line_ids']/tree" position="inside">
+                <field name="pico_process_id" domain="['|', ('producing_process_id', '=', parent.pico_process_id), ('id', '=', parent.pico_process_id)]"
+                       options="{'no_create': True, 'no_create_edit': True}"/>
+                <field name="pico_attr_id" domain="[('process_id', '=', pico_process_id), ('type', '=', 'consume')]"
+                       options="{'no_create': True, 'no_create_edit': True}"/>
+            </xpath>
+            <xpath expr="//field[@name='message_ids']" position="before">
+                <field name="activity_ids" widget="mail_activity"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>
