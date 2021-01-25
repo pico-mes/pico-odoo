@@ -135,7 +135,7 @@ class PicoMESWorkflow(models.Model):
         if not workflow:
             workflow = self.create(self._get_values_from_pico_data(workflow_data))
         else:
-          workflow.write({'name': workflow_data.get('name', '')})
+            workflow.write({'name': workflow_data.get('name', '')})
 
         # reconcile versions
         workflow._reconcile_versions(version_id)
