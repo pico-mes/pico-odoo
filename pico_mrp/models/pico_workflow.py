@@ -236,10 +236,15 @@ class PicoMESWorkflow(models.Model):
             new_vals = {}
             if a.name != attrs_dict[a.pico_id].get('label', ''):
                 new_vals['name'] = attrs_dict[a.pico_id].get('label', '')
-            if process.get('produced_attr_id') == a.pico_id and a.type != 'produce':
-                new_vals['type'] = 'produce'
-            if a.pico_id in process.get('consumed_attr_ids', []) and a.type != 'consume':
-                new_vals['type'] = 'consume'
+            if process.get('produced_attr_id') == a.pico_id:
+                if a.type != 'produce':
+                    new_vals['type'] = 'produce'
+            elif a.pico_id in process.get('consumed_attr_ids', []):
+                if a.type != 'consume':
+                    new_vals['type'] = 'consume'
+            elif a.pico_id in attrs_dict:
+                if a.type != 'other':
+                    new_vals['type'] = 'other'
             if new_vals:
                 line_commands.append((1, a.id, new_vals))
         # unlink any non existing attrs
