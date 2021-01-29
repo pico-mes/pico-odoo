@@ -24,8 +24,12 @@ class TestWorkflow(TransactionCase):
             _logger.warn('called create_work_order %s' % ([process_id, workflow_version_id, annotation], ))
             return {'id': str(process_id) + str(workflow_version_id) + str(annotation)}
 
+        def delete_work_order(self, work_order_id):
+            _logger.warn('called delete_work_order %s' % (work_order_id, ))
+
         pico_requests.PicoMESRequest.subscribe_jsonrpc = subscribe_jsonrpc
         pico_requests.PicoMESRequest.create_work_order = create_work_order
+        pico_requests.PicoMESRequest.delete_work_order = delete_work_order 
 
         parameters = self.env['ir.config_parameter'].sudo()
         parameters.set_param('pico.url', 'http://test:9000')
@@ -406,3 +410,62 @@ class TestWorkflow(TransactionCase):
 
     def test_mrp_multi_process_with_reserve(self):
         self.test_mrp_multi_process(reserve_inventory=True)
+
+    def test_mrp_cancel(self):
+        self.assertFalse(self.product.bom_ids.pico_workflow_id.pico_id, "Expect no Pico Workflow set")
+
+        workflow = self.env['pico.workflow'].with_user(self.admin_user).create({
+            'name': 'Test Flow',
+            'pico_id': 'w156'
+        })
+        workflow.write({
+            'process_ids': [(0, 0, {
+                'name': 'Test Process',
+                'pico_id': '370',
+                'attr_ids': [
+                    (0, 0, {'pico_id': 'a1', 'name': 'A1', 'type': 'produce'}),
+                ],
+                'sequence': 2,
+            })],
+            'version_ids': [(0, 0, {
+                'pico_id': 'v12',
+            })],
+        })
+        process2 = workflow.process_ids
+        process1 = process2.create({
+            'name': 'Test Pre-Process',
+            'pico_id': '369',
+            'attr_ids': [
+                (0, 0, {'pico_id': 'a2', 'name': 'A2', 'type': 'consume'}),
+            ],
+            'sequence': 1,
+            'producing_process_id': process2.id,
+            'workflow_id': workflow.id,
+        })
+
+
+        self._product_add_workflow(workflow)
+        self.assertEqual(self.product.bom_ids.pico_process_id.pico_id, "370", "Expect Pico Process set")
+
+        mo = self.env['mrp.production'].create({
+            'product_id': self.product.id,
+            'bom_id': self.product.bom_ids.id,
+            'product_uom_id': self.product.uom_id.id,
+            'product_qty': 1.0,
+        })
+        self.assertEqual(mo.state, "draft")
+        # we have 1 inactive and 1 active version, but we will have pre-assigned the active one
+        self.assertEqual(mo.pico_process_id, workflow.process_ids.sorted('sequence')[1])
+
+        mo._onchange_move_raw()
+        mo.action_confirm()
+        self.assertEqual(mo.state, "confirmed", "Expect mo to be in confirm state")
+        # process created pico work order(s)
+        self.assertTrue(mo.pico_work_order_ids)
+
+        work_order1 = mo.pico_work_order_ids.filtered(lambda w: w.process_id == process1)
+        work_order2 = mo.pico_work_order_ids.filtered(lambda w: w.process_id == process2)
+        self.assertTrue(work_order1)
+        self.assertTrue(work_order2)
+        mo.action_cancel()
+        self.assertEqual(len(mo.pico_work_order_ids), 0)
