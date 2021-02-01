@@ -28,6 +28,17 @@ class MRPProduction(models.Model):
             production._pico_create_work_orders()
         return res
 
+    def _pico_delete_work_orders(self):
+        for work_order in self.pico_work_order_ids:
+            work_order.pico_delete()
+        self.pico_work_order_ids.unlink()
+
+    def action_cancel(self):
+        res = super().action_cancel()
+        for production in self.filtered(lambda l: l.pico_process_id):
+            production._pico_delete_work_orders()
+        return res
+
     def pico_validate_bom_setup(self):
         self.bom_id.pico_workflow_id.validate_bom_setup(self.bom_id, should_raise=True)
 
@@ -161,6 +172,13 @@ class MRPPicoWorkOrder(models.Model):
             'pico_id': process_result['id'],
             'state': 'running',
         })
+
+    def pico_delete(self):
+        self._pico_delete()
+
+    def _pico_delete(self):
+        api = pico_api(self.env)
+        api.delete_work_order(self.pico_id)
 
     def _workorder_should_consume_in_real_time(self):
         # 1. Must be making a single 'unit' qty

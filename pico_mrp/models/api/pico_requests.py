@@ -19,6 +19,11 @@ class PicoMESRequest:
         result.raise_for_status()
         return result.json()
 
+    def delete_request(self, endpoint):
+        url = self.url + endpoint
+        result = requests.delete(url, headers=self.headers)
+        result.raise_for_status()
+
     def subscribe_jsonrpc(self, endpoint_url, new_workflow_version_method, work_order_complete_method):
         body = {
             'rpcHostUrl': endpoint_url,
@@ -30,3 +35,6 @@ class PicoMESRequest:
     def create_work_order(self, process_id, workflow_version_id, annotation=''):
         body = {"processId": process_id, 'workflowVersionId': workflow_version_id, 'annotation': annotation}
         return self.post_request('/work_orders', body)
+
+    def delete_work_order(self, work_order_id):
+        return self.delete_request('/work_orders/' + work_order_id)
