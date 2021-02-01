@@ -30,7 +30,7 @@ class MRPProduction(models.Model):
 
     def _pico_delete_work_orders(self):
         for work_order in self.pico_work_order_ids:
-          work_order.pico_delete()
+            work_order.pico_delete()
         self.pico_work_order_ids.unlink()
 
     def action_cancel(self):
