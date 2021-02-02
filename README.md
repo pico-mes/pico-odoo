@@ -1,6 +1,6 @@
 # pico-odoo
 
-Odoo manufacturing add-ons to connect to Pico MES
+Odoo manufacturing add-on to connect to Pico MES. Build executable processes and step definitions with work instructions and quality checks using Pico MES and seamlessly integrate with Odoo's Inventory, BOM Management, and Manufacturing modules.
 
 # Adding the Connector
 
@@ -64,3 +64,9 @@ cp docker-compose.override.yml.sample docker-compose.override.yml
 #!/bin/bash
 mkdir -p var/data/odoo
 ```
+
+# Contributing
+
+### Python file formatting
+
+Pico uses the [Black opinionated code formatter](https://black.readthedocs.io/en/stable/) for all Python files along with the default settings.

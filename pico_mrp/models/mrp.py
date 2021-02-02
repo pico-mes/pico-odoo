@@ -4,20 +4,20 @@ from odoo.addons.pico_mrp.models.pico_workflow import pico_api
 
 
 class MRPProduction(models.Model):
-    _inherit = 'mrp.production'
+    _inherit = "mrp.production"
 
-    pico_process_id = fields.Many2one(related='bom_id.pico_process_id')
-    pico_work_order_ids = fields.One2many('mrp.production.pico.work.order', 'production_id',
-                                          string='Pico Work Orders')
+    pico_process_id = fields.Many2one(related="bom_id.pico_process_id")
+    pico_work_order_ids = fields.One2many(
+        "mrp.production.pico.work.order", "production_id", string="Pico Work Orders"
+    )
 
     def _pico_create_work_orders(self):
-        model = self.env['mrp.production.pico.work.order'].sudo()
+        model = self.env["mrp.production.pico.work.order"].sudo()
         for i in range(int(self.product_qty)):
             for p in self.pico_process_id.process_ids:
-                work_order = model.create({
-                    'production_id': self.id,
-                    'process_id': p.id,
-                })
+                work_order = model.create(
+                    {"production_id": self.id, "process_id": p.id}
+                )
                 work_order.pico_create()
 
     def action_confirm(self):
@@ -43,46 +43,59 @@ class MRPProduction(models.Model):
         self.bom_id.pico_workflow_id.validate_bom_setup(self.bom_id, should_raise=True)
 
     def pico_complete(self):
-        pending_work_orders = self.pico_work_order_ids.filtered(lambda wo: wo.state == 'pending')
+        pending_work_orders = self.pico_work_order_ids.filtered(
+            lambda wo: wo.state == "pending"
+        )
         while pending_work_orders:
-            work_orders = self.env['mrp.production.pico.work.order'].browse()
+            work_orders = self.env["mrp.production.pico.work.order"].browse()
             for pending in pending_work_orders:
-                if not work_orders.filtered(lambda wo: wo.process_id == pending.process_id):
+                if not work_orders.filtered(
+                    lambda wo: wo.process_id == pending.process_id
+                ):
                     work_orders += pending
-            if work_orders.mapped('process_id') == self.pico_process_id.process_ids:
+            if work_orders.mapped("process_id") == self.pico_process_id.process_ids:
                 # work_orders is a 'complete set'
                 # reduce the pending work orders
                 pending_work_orders -= work_orders
                 self._pico_complete(work_orders)
                 # mark lines as complete
-                work_orders.write({'state': 'done'})
+                work_orders.write({"state": "done"})
             else:
                 # couldn't find a 'complete set'
                 pending_work_orders = None
 
     def _pico_find_or_create_serial(self, product, serial_name):
-        serial = self.env['stock.production.lot'].search([
-            ('product_id', '=', product.id),
-            ('name', '=', serial_name),
-        ], limit=1)
+        serial = self.env["stock.production.lot"].search(
+            [("product_id", "=", product.id), ("name", "=", serial_name)], limit=1
+        )
         if not serial:
-            serial = serial.create({
-                'product_id': product.id,
-                'name': serial_name,
-                'company_id': self.env.user.company_id.id,
-                # Required for creating, search may pick up any you have permissions to
-            })
+            serial = serial.create(
+                {
+                    "product_id": product.id,
+                    "name": serial_name,
+                    "company_id": self.env.user.company_id.id,
+                    # Required for creating, search may pick up any you have permissions to
+                }
+            )
         return serial
 
     def _pico_complete(self, work_orders):
         # work_orders should be a 'complete set' of Pico Work Orders
-        produce = self.env['mrp.product.produce'].with_context(default_production_id=self.id).create({})
-        work_order_consumed_in_real_time = work_orders[0]._workorder_should_consume_in_real_time()
+        produce = (
+            self.env["mrp.product.produce"]
+            .with_context(default_production_id=self.id)
+            .create({})
+        )
+        work_order_consumed_in_real_time = work_orders[
+            0
+        ]._workorder_should_consume_in_real_time()
         if produce.serial:
             # requires finished serial number
             serial_name = work_orders.find_finished_serial()
             if not serial_name:
-                raise ValueError('Process requires a finished serial, but none provided.')
+                raise ValueError(
+                    "Process requires a finished serial, but none provided."
+                )
             serial = self._pico_find_or_create_serial(produce.product_id, serial_name)
             # Assign lot we found or created
             produce.finished_lot_id = serial
@@ -90,39 +103,47 @@ class MRPProduction(models.Model):
                 # if it was consumed in real time, must have produced this one
                 # this prevents an exception being raised
                 # UserError('You can not consume without telling for which lot you consumed it')
-                self.move_raw_ids.mapped('move_line_ids').write({
-                    'lot_produced_ids': [(4, serial.id, 0)],
-                })
+                self.move_raw_ids.mapped("move_line_ids").write(
+                    {"lot_produced_ids": [(4, serial.id, 0)]}
+                )
         if not work_order_consumed_in_real_time:
             # if we always do this, we will over-consume
             produce._generate_produce_lines()
-            for line in produce.raw_workorder_line_ids.filtered(lambda line: line.product_tracking in ('lot', 'serial')):
+            for line in produce.raw_workorder_line_ids.filtered(
+                lambda line: line.product_tracking in ("lot", "serial")
+            ):
                 serial_name = work_orders.find_consumed_serial(line.move_id.bom_line_id)
                 if not serial_name:
-                    raise ValueError('Stock Move requires a consumed serial, but none provided.')
+                    raise ValueError(
+                        "Stock Move requires a consumed serial, but none provided."
+                    )
                 serial = self._pico_find_or_create_serial(line.product_id, serial_name)
                 line.lot_id = serial
         produce.do_produce()
         # If this is the last qty to produce, we can finish the MRP Production
-        if self.state == 'to_close':
+        if self.state == "to_close":
             self.button_mark_done()
 
 
 class MRPBoM(models.Model):
-    _name = 'mrp.bom'
-    _inherit = ['mrp.bom', 'mail.activity.mixin']
+    _name = "mrp.bom"
+    _inherit = ["mrp.bom", "mail.activity.mixin"]
 
-    pico_process_id = fields.Many2one('pico.workflow.process', string='Pico Process ID')
-    pico_workflow_id = fields.Many2one(related='pico_process_id.workflow_id', string='Pico Workflow ID', store=True)
+    pico_process_id = fields.Many2one("pico.workflow.process", string="Pico Process ID")
+    pico_workflow_id = fields.Many2one(
+        related="pico_process_id.workflow_id", string="Pico Workflow ID", store=True
+    )
 
-    @api.onchange('pico_process_id')
+    @api.onchange("pico_process_id")
     def _onchange_pico_process(self):
-        empty_pico_process = self.env['pico.workflow.process'].browse()
+        empty_pico_process = self.env["pico.workflow.process"].browse()
         for bom in self:
             if bom.pico_process_id:
                 pico_processes = bom.pico_process_id.process_ids
-                for line in bom.bom_line_ids.filtered(lambda l: l.pico_process_id and
-                                                                l.pico_process_id not in pico_processes):
+                for line in bom.bom_line_ids.filtered(
+                    lambda l: l.pico_process_id
+                    and l.pico_process_id not in pico_processes
+                ):
                     line.pico_process_id = empty_pico_process
             else:
                 for line in bom.bom_line_ids:
@@ -130,34 +151,42 @@ class MRPBoM(models.Model):
 
 
 class MRPBoMLine(models.Model):
-    _inherit = 'mrp.bom.line'
+    _inherit = "mrp.bom.line"
 
-    pico_process_id = fields.Many2one('pico.workflow.process', string='Pico Process')
-    pico_attr_id = fields.Many2one('pico.workflow.process.attr', string='Pico Attr.')
+    pico_process_id = fields.Many2one("pico.workflow.process", string="Pico Process")
+    pico_attr_id = fields.Many2one("pico.workflow.process.attr", string="Pico Attr.")
 
     # onchange process need to clear pico attr
-    @api.onchange('pico_process_id')
+    @api.onchange("pico_process_id")
     def _onchange_pico_process_id(self):
-        self.update({'pico_attr_id': False})
+        self.update({"pico_attr_id": False})
 
 
 class MRPPicoWorkOrder(models.Model):
-    _name = 'mrp.production.pico.work.order'
-    _description = 'Pico Work Order'
-    _rec_name = 'pico_id'
+    _name = "mrp.production.pico.work.order"
+    _description = "Pico Work Order"
+    _rec_name = "pico_id"
 
     pico_id = fields.Char()
-    process_id = fields.Many2one('pico.workflow.process', string='Process')
-    production_id = fields.Many2one('mrp.production', string='Manufacturing Order', required=True)
-    state = fields.Selection([
-        ('draft', 'Draft'),
-        ('running', 'Running'),
-        ('pending', 'Pending'),
-        ('done', 'Done'),
-    ], string='State', default='draft')
-    date_start = fields.Datetime(string='Started At')
-    date_complete = fields.Datetime(string='Completed At')
-    attr_value_ids = fields.One2many('mrp.pico.work.order.attr.value', 'work_order_id', string='Attr. Values')
+    process_id = fields.Many2one("pico.workflow.process", string="Process")
+    production_id = fields.Many2one(
+        "mrp.production", string="Manufacturing Order", required=True
+    )
+    state = fields.Selection(
+        [
+            ("draft", "Draft"),
+            ("running", "Running"),
+            ("pending", "Pending"),
+            ("done", "Done"),
+        ],
+        string="State",
+        default="draft",
+    )
+    date_start = fields.Datetime(string="Started At")
+    date_complete = fields.Datetime(string="Completed At")
+    attr_value_ids = fields.One2many(
+        "mrp.pico.work.order.attr.value", "work_order_id", string="Attr. Values"
+    )
 
     def pico_create(self):
         self._pico_create()
@@ -165,13 +194,10 @@ class MRPPicoWorkOrder(models.Model):
     def _pico_create(self):
         api = pico_api(self.env)
         version = self.process_id.workflow_id.version_ids[0]
-        process_result = api.create_work_order(self.process_id.pico_id,
-                                               version.pico_id,
-                                               self.production_id.name)
-        self.write({
-            'pico_id': process_result['id'],
-            'state': 'running',
-        })
+        process_result = api.create_work_order(
+            self.process_id.pico_id, version.pico_id, self.production_id.name
+        )
+        self.write({"pico_id": process_result["id"], "state": "running"})
 
     def pico_delete(self):
         self._pico_delete()
@@ -185,9 +211,9 @@ class MRPPicoWorkOrder(models.Model):
         if self.production_id.product_qty != 1.0:
             return False
         # 2. Anything consuming lots/serials should be unit so that it is 'safe' to just swap the lot
-        moves_with_multi_qty_lot = self.production_id.move_raw_ids.filtered(lambda m:
-                                                                            m.needs_lots
-                                                                            and m.product_uom_qty != 1.0)
+        moves_with_multi_qty_lot = self.production_id.move_raw_ids.filtered(
+            lambda m: m.needs_lots and m.product_uom_qty != 1.0
+        )
         if moves_with_multi_qty_lot:
             return False
         # 3. Should not do it if there are not multiple work orders, because then the 'set' completing is preferred
@@ -197,35 +223,39 @@ class MRPPicoWorkOrder(models.Model):
 
     def pico_complete(self, values):
         def process_datetime(value):
-            value = value.replace('T', ' ')
-            return value.split('.')[0]
+            value = value.replace("T", " ")
+            return value.split(".")[0]
+
         # This is called on an empty record set from the controller
         if not self:
-            pico_id = values.get('workOrderId', 'SENTINEL_THAT_DOESNT_EXIST')
-            self = self.search([('pico_id', '=', pico_id)], limit=1)
+            pico_id = values.get("workOrderId", "SENTINEL_THAT_DOESNT_EXIST")
+            self = self.search([("pico_id", "=", pico_id)], limit=1)
             if not self:
                 return
 
-        write_vals = {'state': 'pending'}
-        if 'startedAt' in values:
-            write_vals['date_start'] = process_datetime(values['startedAt'])
-        if 'completedAt' in values:
-            write_vals['date_complete'] = process_datetime(values['completedAt'])
-        if 'attributes' in values:
+        write_vals = {"state": "pending"}
+        if "startedAt" in values:
+            write_vals["date_start"] = process_datetime(values["startedAt"])
+        if "completedAt" in values:
+            write_vals["date_complete"] = process_datetime(values["completedAt"])
+        if "attributes" in values:
             line_commands = []
-            for attr_vals in values.get('attributes', []):
-                attr = self.process_id.attr_ids.filtered(lambda a: a.pico_id == attr_vals['id'])
+            for attr_vals in values.get("attributes", []):
+                attr = self.process_id.attr_ids.filtered(
+                    lambda a: a.pico_id == attr_vals["id"]
+                )
                 if attr:
-                    line_commands.append((0, 0, {
-                        'value': attr_vals['value'],
-                        'attr_id': attr.id,
-                    }))
+                    line_commands.append(
+                        (0, 0, {"value": attr_vals["value"], "attr_id": attr.id})
+                    )
             if line_commands:
-                write_vals['attr_value_ids'] = line_commands
+                write_vals["attr_value_ids"] = line_commands
         self.write(write_vals)
         if self._workorder_should_consume_in_real_time():
             # only complete moves related to the completed process
-            for move in self.production_id.move_raw_ids.filtered(lambda m: m.bom_line_id.pico_process_id == self.process_id):
+            for move in self.production_id.move_raw_ids.filtered(
+                lambda m: m.bom_line_id.pico_process_id == self.process_id
+            ):
                 lot_id = False
                 if move.needs_lots:
                     serial_name = self.find_consumed_serial(move.bom_line_id)
@@ -233,50 +263,67 @@ class MRPPicoWorkOrder(models.Model):
                         # do not want to raise error because we want the transaction to finish and queue
                         # the completion
                         break
-                    serial = self.production_id._pico_find_or_create_serial(move.product_id, serial_name)
+                    serial = self.production_id._pico_find_or_create_serial(
+                        move.product_id, serial_name
+                    )
                     lot_id = serial.id
                 if move.move_line_ids:
                     # Line was 'reserved', we may have a new serial, but we will for sure increment done qty
-                    move.move_line_ids.write({
-                        'qty_done': move.product_uom_qty,
-                        'lot_id': lot_id,
-                    })
+                    move.move_line_ids.write(
+                        {"qty_done": move.product_uom_qty, "lot_id": lot_id}
+                    )
                 else:
                     # Was not reserved, create new line manually (will result in underflow if inventory isn't available)
-                    move.write({
-                        'move_line_ids': [(0, 0, {
-                            'product_id': move.product_id.id,
-                            'location_id': move.location_id.id,
-                            'location_dest_id': move.location_dest_id.id,
-                            'product_uom_id': move.product_uom.id,
-                            'qty_done': move.product_uom_qty,
-                            'lot_id': lot_id,
-                        })]
-                    })
+                    move.write(
+                        {
+                            "move_line_ids": [
+                                (
+                                    0,
+                                    0,
+                                    {
+                                        "product_id": move.product_id.id,
+                                        "location_id": move.location_id.id,
+                                        "location_dest_id": move.location_dest_id.id,
+                                        "product_uom_id": move.product_uom.id,
+                                        "qty_done": move.product_uom_qty,
+                                        "lot_id": lot_id,
+                                    },
+                                )
+                            ]
+                        }
+                    )
 
         self.production_id.pico_complete()
 
     def find_finished_serial(self):
         # self will be a 'complete set' of work orders
-        attr_values = self.mapped('attr_value_ids').filtered(lambda av: av.attr_type == 'produce')
+        attr_values = self.mapped("attr_value_ids").filtered(
+            lambda av: av.attr_type == "produce"
+        )
         if not attr_values:
             return None
         return attr_values[0].value
 
     def find_consumed_serial(self, bom_line):
         # self will be a 'complete set' of work orders
-        attr_values = self.mapped('attr_value_ids').filtered(lambda av: av.attr_id == bom_line.pico_attr_id)
+        attr_values = self.mapped("attr_value_ids").filtered(
+            lambda av: av.attr_id == bom_line.pico_attr_id
+        )
         if not attr_values:
             return None
         return attr_values[0].value
 
 
 class MRPPicoWorkOrderAttrValue(models.Model):
-    _name = 'mrp.pico.work.order.attr.value'
-    _description = 'Pico Work Order Attr Value'
-    _rec_name = 'value'
+    _name = "mrp.pico.work.order.attr.value"
+    _description = "Pico Work Order Attr Value"
+    _rec_name = "value"
 
-    work_order_id = fields.Many2one('mrp.production.pico.work.order', string='Pico Work Order')
-    value = fields.Char(string='Value')
-    attr_id = fields.Many2one('pico.workflow.process.attr', string='Attr', ondelete='set null')
-    attr_type = fields.Selection(related='attr_id.type')
+    work_order_id = fields.Many2one(
+        "mrp.production.pico.work.order", string="Pico Work Order"
+    )
+    value = fields.Char(string="Value")
+    attr_id = fields.Many2one(
+        "pico.workflow.process.attr", string="Attr", ondelete="set null"
+    )
+    attr_type = fields.Selection(related="attr_id.type")
