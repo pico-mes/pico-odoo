@@ -28,37 +28,52 @@ After following the steps above, we now need to install the connector in Odoo's 
 1. Return to the Manufacturing Settings and click **Subscribe to Webhooks**.
 1. Once this is complete, check a specific User's permissions. In the "Other" section make sure the user is a Pico Manager or Pico User in the Pico Workflow dropdown menu.
 
+# Additional Logging
+
+Extra logging can be added using Odoo's debug logs. To enable logging in any particular file within the Pico connector add the following lines to the top:
+
+```
+from logging import getLogger
+_logger = getLogger(__name__)
+```
+
+Then within the section of interest, add log print statements as such:
+
+```
+_logger.info('Pico Rocks! But check this variable... {}'.format(thing_i_want_2_log))
+```
+
 # Development Environment Setup
 
-### copy nginx conf (if necessary)
+### Copy nginx conf (if necessary)
 
 ```
 #!/bin/bash
 cp nginx-site.conf.sample nginx-site.conf
 ```
 
-### copy odoo conf
+### Copy odoo conf
 
 ```
 #!/bin/bash
 cp odoo.conf.sample odoo.conf
 ```
 
-### set db name to odoo (default db) if you have more than 1 (if you ran test)
+### Set db name to odoo (default db) if you have more than 1 (if you ran test)
 
 ```
 #odoo.conf
 db_name = odoo
 ```
 
-### change nginx port to not conflict with others (if necessary)
+### Change nginx port to not conflict with others (if necessary)
 
 ```
 #!/bin/bash
 cp docker-compose.override.yml.sample docker-compose.override.yml
 ```
 
-### create odoo directory, and make sure user odoo user in container has write access
+### Create odoo directory, and make sure user odoo user in container has write access
 
 ```
 #!/bin/bash
