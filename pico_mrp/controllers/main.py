@@ -9,12 +9,13 @@ class PicoMESController(http.Controller):
         jsonrequest = http.request.jsonrequest
         id = data.get('id')
         if not id or len(id) < 14:
-            return
+            return http.Response('Invalid Request. ID Length incorrect', status=400)
 
         method = jsonrequest.get('method')
         if method == 'newWorkflowVersionMethod':
             http.request.env['pico.workflow'].sudo().process_pico_data(data)
+            return http.Response('Workflow version acknowledged', status=200)
         elif method == 'workOrderCompleteMethod':
             http.request.env['mrp.production.pico.work.order'].sudo().pico_complete(data)
-        else:
-            raise Exception('Invalid method called. (01)')
+            return http.Response('Work order complete acknowledged', status=200)
+        return http.Response('Invalid method called. (01)', status=400)
