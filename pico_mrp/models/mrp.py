@@ -35,8 +35,7 @@ class MRPProduction(models.Model):
 
     def action_cancel(self):
         res = super().action_cancel()
-        for production in self.filtered(lambda l: l.pico_process_id):
-            production._pico_delete_work_orders()
+        self._pico_delete_work_orders()
         return res
 
     def pico_validate_bom_setup(self):
