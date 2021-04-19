@@ -77,6 +77,7 @@ class MRPProduction(models.Model):
         # work_orders should be a 'complete set' of Pico Work Orders
         produce = self.env['mrp.product.produce'].with_context(default_production_id=self.id).create({})
         work_order_consumed_in_real_time = work_orders[0]._workorder_should_consume_in_real_time()
+        produce.qty_producing = 1
         if produce.serial:
             # requires finished serial number
             serial_name = work_orders.find_finished_serial()
