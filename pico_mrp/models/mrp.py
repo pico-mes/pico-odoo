@@ -167,7 +167,7 @@ class MRPPicoWorkOrder(models.Model):
         version = self.process_id.workflow_id.version_ids[0]
         annotation = self.production_id.name
         if self.production_id.x_studio_reference:
-            annotation = annotation + '-' + self.production_id.x_studio_reference
+            annotation = annotation + ' ' + self.production_id.x_studio_reference
         process_result = api.create_work_order(self.process_id.pico_id,
                                                version.pico_id,
                                                annotation)
