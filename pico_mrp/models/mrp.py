@@ -1,4 +1,5 @@
 from odoo import api, models, fields
+from odoo.exceptions import UserError
 
 from odoo.addons.pico_mrp.models.pico_workflow import pico_api
 
@@ -166,6 +167,9 @@ class MRPPicoWorkOrder(models.Model):
         api = pico_api(self.env)
         version = self.process_id.workflow_id.version_ids[0]
         annotation = self.production_id.name
+        if 'x_studio_reference' not in self.production_id:
+            raise UserError('The x_studio_reference Field is not available and is required by the Pico integration. Please create this Field before proceeding.')
+
         if self.production_id.x_studio_reference:
             annotation = annotation + ' ' + self.production_id.x_studio_reference
         process_result = api.create_work_order(self.process_id.pico_id,
