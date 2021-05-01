@@ -165,9 +165,12 @@ class MRPPicoWorkOrder(models.Model):
     def _pico_create(self):
         api = pico_api(self.env)
         version = self.process_id.workflow_id.version_ids[0]
+        annotation = self.production_id.name
+        if self.production_id.bom_id.code:
+            annotation = annotation + ' ' + self.production_id.bom_id.code
         process_result = api.create_work_order(self.process_id.pico_id,
                                                version.pico_id,
-                                               self.production_id.name)
+                                               annotation)
         self.write({
             'pico_id': process_result['id'],
             'state': 'running',
