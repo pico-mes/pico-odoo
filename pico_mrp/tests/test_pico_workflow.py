@@ -44,6 +44,7 @@ class TestWorkflow(TransactionCase):
         self.product.bom_ids.bom_line_ids[1:].unlink()
 
         self.bom_activity = self.env.ref('pico_mrp.mail_activity_type_bom_map_needed')
+        self.missing_produce_serial_activity = self.env.ref('pico_mrp.mail_activity_type_missing_produce_serial')
         self.workflow_activities = defaultdict(lambda: self.env['mail.activity'].browse())
 
     def _product_add_workflow(self, workflow):
@@ -64,8 +65,8 @@ class TestWorkflow(TransactionCase):
 
     def _new_workflow_activities(self, workflow):
         activities = self.env['mail.activity'].search([
-            ('activity_type_id', '=', self.bom_activity.id),
-            ('res_model_id', '=', self.env.ref('mrp.model_mrp_bom').id),
+            ('activity_type_id', 'in', [self.bom_activity.id, self.missing_produce_serial_activity.id]),
+            ('res_model_id', 'in', [self.env.ref('mrp.model_mrp_bom').id, self.env.ref('mrp.model_mrp_production').id]),
             ('res_id', 'not in', self.workflow_activities[workflow].ids),
         ])
         self.workflow_activities[workflow] += activities
@@ -135,8 +136,7 @@ class TestWorkflow(TransactionCase):
         # Should be 'valid' already, so no activity should have been created.
         self._product_add_workflow(workflow)
         workflow.validate_bom_setup()
-        activities = self._new_workflow_activities(workflow)
-        self.assertFalse(activities)
+        self.assertFalse(self._new_workflow_activities(workflow))
 
 
         # The new p19 should ultimately go into the p18 production or have 'producing_process_id' == p18
@@ -160,8 +160,7 @@ class TestWorkflow(TransactionCase):
 
         # This change added a process, but should not have invalidated this BoM
         workflow.validate_bom_setup()
-        activities = self._new_workflow_activities(workflow)
-        self.assertFalse(activities)
+        self.assertFalse(self._new_workflow_activities(workflow))
 
         del response_data["workflow"]["processes"][1]
         workflow = self.env['pico.workflow'].process_pico_data(response_data)
@@ -172,8 +171,7 @@ class TestWorkflow(TransactionCase):
 
         # This deleted (archived) the original process, therefor the BoM is now invalid
         workflow.validate_bom_setup()
-        activities = self._new_workflow_activities(workflow)
-        self.assertTrue(activities)
+        self.assertTrue(self._new_workflow_activities(workflow))
 
         response_data["workflow"]["processes"] = [{'id': 'p20'}, {'id': 'p21'}, {'id': 'p22'}, {'id': 'p23'}]
         workflow = self.env['pico.workflow'].process_pico_data(response_data)
@@ -316,6 +314,9 @@ class TestWorkflow(TransactionCase):
                 "workOrderId": "string"
             })
         self.assertEqual(context.exception, mo.no_finished_serial_err)
+        acts = self._new_workflow_activities(workflow)
+        print(acts[0].user_id)
+        self.assertEqual(len(acts),1)
 
         self.assertEqual(mo.pico_work_order_ids.state, 'running')
         self.assertFalse(mo.pico_work_order_ids.date_complete)

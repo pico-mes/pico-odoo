@@ -3,6 +3,7 @@ from odoo import api, models, fields, SUPERUSER_ID
 from odoo.addons.pico_mrp.models.pico_workflow import pico_api
 
 class MRPProduction(models.Model):
+    # _inherit = ['mrp.production', 'mail.activity.mixin']
     _inherit = 'mrp.production'
 
     pico_process_id = fields.Many2one(related='bom_id.pico_process_id')
@@ -82,6 +83,12 @@ class MRPProduction(models.Model):
             # requires finished serial number
             serial_name = work_orders.find_finished_serial()
             if not serial_name:
+                act = self.activity_schedule(
+                    'pico_mrp.mail_activity_type_missing_produce_serial',
+                    user_id=self.user_id.id,
+                    note='this build is missing a produce serial number!',
+                    activity_type_id=self.env.ref('pico_mrp.mail_activity_type_missing_produce_serial').id
+                )
                 raise self.no_finished_serial_err
             serial = self._pico_find_or_create_serial(produce.product_id, serial_name)
             # Assign lot we found or created

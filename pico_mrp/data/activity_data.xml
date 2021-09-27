@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <odoo>
 
+    <record id="mail_activity_type_missing_produce_serial" model="mail.activity.type">
+        <field name="name">Work Order Missing Serial (no serial attribute?)</field>
+        <field name="category">default</field>
+        <field name="res_model_id" ref="mrp.model_mrp_production"/>
+        <field name="icon">fa-tasks</field>
+        <field name="delay_count">0</field>
+    </record>
+
     <record id="mail_activity_type_bom_map_needed" model="mail.activity.type">
         <field name="name">Pico BoM Mapping Needed</field>
         <field name="category">default</field>
