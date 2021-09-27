@@ -1,7 +1,6 @@
-from odoo import api, models, fields
+from odoo import api, models, fields, SUPERUSER_ID
 
 from odoo.addons.pico_mrp.models.pico_workflow import pico_api
-
 
 class MRPProduction(models.Model):
     _inherit = 'mrp.production'
@@ -9,6 +8,7 @@ class MRPProduction(models.Model):
     pico_process_id = fields.Many2one(related='bom_id.pico_process_id')
     pico_work_order_ids = fields.One2many('mrp.production.pico.work.order', 'production_id',
                                           string='Pico Work Orders')
+    no_finished_serial_err = ValueError('Process requires a finished serial, but none provided.')
 
     def _pico_create_work_orders(self):
         model = self.env['mrp.production.pico.work.order'].sudo()
@@ -82,7 +82,7 @@ class MRPProduction(models.Model):
             # requires finished serial number
             serial_name = work_orders.find_finished_serial()
             if not serial_name:
-                raise ValueError('Process requires a finished serial, but none provided.')
+                raise self.no_finished_serial_err
             serial = self._pico_find_or_create_serial(produce.product_id, serial_name)
             # Assign lot we found or created
             produce.finished_lot_id = serial

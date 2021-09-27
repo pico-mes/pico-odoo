@@ -17,19 +17,19 @@ class TestWorkflow(TransactionCase):
         self.admin_user = self.env.ref('base.user_admin')
 
         def subscribe_jsonrpc(self, endpoint_url, new_workflow_version_method, work_order_complete_method):
-            _logger.warn('called subscribe_jsonrpc %s' % ([endpoint_url, new_workflow_version_method, work_order_complete_method],))
+            _logger.info('called subscribe_jsonrpc %s' % ([endpoint_url, new_workflow_version_method, work_order_complete_method],))
             return {}
 
         def create_work_order(self, process_id, workflow_version_id, annotation=''):
-            _logger.warn('called create_work_order %s' % ([process_id, workflow_version_id, annotation], ))
+            _logger.info('called create_work_order %s' % ([process_id, workflow_version_id, annotation], ))
             return {'id': str(process_id) + str(workflow_version_id) + str(annotation)}
 
         def delete_work_order(self, work_order_id):
-            _logger.warn('called delete_work_order %s' % (work_order_id, ))
+            _logger.info('called delete_work_order %s' % (work_order_id, ))
 
         pico_requests.PicoMESRequest.subscribe_jsonrpc = subscribe_jsonrpc
         pico_requests.PicoMESRequest.create_work_order = create_work_order
-        pico_requests.PicoMESRequest.delete_work_order = delete_work_order 
+        pico_requests.PicoMESRequest.delete_work_order = delete_work_order
 
         parameters = self.env['ir.config_parameter'].sudo()
         parameters.set_param('pico.url', 'http://test:9000')
@@ -197,17 +197,18 @@ class TestWorkflow(TransactionCase):
         res = api.create_work_order('test', 'test')
         self.assertTrue(isinstance(res, dict))
 
-    def test_mrp(self):
+    def mrp_setup(self):
         self.assertFalse(self.product.bom_ids.pico_workflow_id.pico_id, "Expect no Pico Workflow set")
 
         workflow = self.env['pico.workflow'].with_user(self.admin_user).create({
             'name': 'Test Flow',
             'pico_id': 'w156'
         })
+        pid = 'the process id'
         workflow.write({
             'process_ids': [(0, 0, {
                 'name': 'Test Process',
-                'pico_id': '370',
+                'pico_id': pid,
                 'attr_ids': [
                     (0, 0, {'pico_id': 'a1', 'name': 'A1', 'type': 'produce'}),
                     (0, 0, {'pico_id': 'a2', 'name': 'A2', 'type': 'consume'}),
@@ -225,7 +226,7 @@ class TestWorkflow(TransactionCase):
         })
 
         self._product_add_workflow(workflow)
-        self.assertEqual(self.product.bom_ids.pico_process_id.pico_id, "370", "Expect Pico Process set")
+        self.assertEqual(self.product.bom_ids.pico_process_id.pico_id, pid, "Expect Pico Process set")
 
         mo = self.env['mrp.production'].create({
             'product_id': self.product.id,
@@ -246,12 +247,17 @@ class TestWorkflow(TransactionCase):
         work_order = mo.pico_work_order_ids
         self.assertEqual(work_order.state, 'running')
         self.assertFalse(work_order._workorder_should_consume_in_real_time())  # should prefer to consume as 'set' of 1
-        
+
         # The patched work order create process pattern in setUp()
         self.assertEqual(work_order.pico_id, '%s%s%s' % (
-            work_order.process_id.pico_id,
+            pid,
             work_order.process_id.workflow_id.version_ids.pico_id,
             mo.name))
+
+        return mo,workflow
+
+    def test_mrp(self):
+        mo,_ = self.mrp_setup()
 
         # simulate complete
         mo.pico_work_order_ids.pico_complete({
@@ -286,6 +292,35 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(mo.state, 'done')
         self.assertEqual(mo.finished_move_line_ids.lot_id.name, 'F101')
         self.assertEqual(mo.move_raw_ids.mapped('move_line_ids.lot_id.name'), ['C101'])
+
+    def test_complete_missing_serial(self):
+        mo,workflow = self.mrp_setup()
+
+        # simulate incomplete "complete"
+        with self.assertRaises(ValueError) as context:
+            mo.pico_work_order_ids.pico_complete({
+                "id": "string",
+                "attributes": [
+                    # Consumed Serial
+                    {
+                        "id": "a2",
+                        "label": "A2",
+                        "value": "C101",
+                    },
+                ],
+                "startedAt": "2020-10-01T10:40:50.043Z",
+                "completedAt": "2020-10-02T10:40:50.043Z",
+                "cycleTime": 0,
+                "workflowId": "string",
+                "processId": "string",
+                "workOrderId": "string"
+            })
+        self.assertEqual(context.exception, mo.no_finished_serial_err)
+
+        self.assertEqual(mo.pico_work_order_ids.state, 'running')
+        self.assertFalse(mo.pico_work_order_ids.date_complete)
+        for sm in mo.move_raw_ids:
+            self.assertEqual(sm.quantity_done, 0)
 
     def test_mrp_multi_process(self, reserve_inventory=False):
         self.assertFalse(self.product.bom_ids.pico_workflow_id.pico_id, "Expect no Pico Workflow set")

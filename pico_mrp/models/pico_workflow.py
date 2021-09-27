@@ -64,7 +64,7 @@ class PicoMESWorkflow(models.Model):
         return no_errors
 
     def validate_bom_setup(self, boms=None, should_raise=False):
-        res = True
+        valid = True
         for workflow in self:
             if not boms:
                 # Need to specifically find archived processes,
@@ -81,13 +81,13 @@ class PicoMESWorkflow(models.Model):
                 except PicoBoMNeedsMap:
                     if should_raise:
                         raise
-                    res = False
+                    valid = False
                     bom.activity_schedule(
                         'pico_mrp.mail_activity_type_bom_map_needed',
                         user_id=bom.product_tmpl_id.responsible_id.id or SUPERUSER_ID,
                         note='The Pico Workflow requires setup or mapping consumed attributes.'
                     )
-        return res
+        return valid
 
     def _validate_bom_setup(self, bom):
         # implied: inactive process shouldn't be used in a BoM
