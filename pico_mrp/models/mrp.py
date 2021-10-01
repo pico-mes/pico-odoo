@@ -2,6 +2,9 @@ from odoo import api, models, fields, SUPERUSER_ID
 
 from odoo.addons.pico_mrp.models.pico_workflow import pico_api
 
+from logging import getLogger
+_logger = getLogger(__name__)
+
 class MRPProduction(models.Model):
     # _inherit = ['mrp.production', 'mail.activity.mixin']
     _inherit = 'mrp.production'
@@ -165,6 +168,8 @@ class MRPPicoWorkOrder(models.Model):
     date_start = fields.Datetime(string='Started At')
     date_complete = fields.Datetime(string='Completed At')
     attr_value_ids = fields.One2many('mrp.pico.work.order.attr.value', 'work_order_id', string='Attr. Values')
+    build_url = fields.Char()
+    process_version = fields.Char()
 
     def pico_create(self):
         self._pico_create()
@@ -218,6 +223,10 @@ class MRPPicoWorkOrder(models.Model):
             write_vals['date_start'] = process_datetime(values['startedAt'])
         if 'completedAt' in values:
             write_vals['date_complete'] = process_datetime(values['completedAt'])
+        if 'buildUrl' in values:
+            write_vals['build_url'] = values['buildUrl']
+        if 'processVersion' in values:
+            write_vals['process_version'] = values['processVersion']
         if 'attributes' in values:
             line_commands = []
             for attr_vals in values.get('attributes', []):

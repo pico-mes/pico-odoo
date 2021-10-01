@@ -18,6 +18,8 @@
                             <field name="date_complete"/>
                             <field name="state"/>
                             <field name="attr_value_ids" widget="many2many_tags"/>
+                            <field name="process_version"/>
+                            <field name="build_url" widget="url"/>
                         </tree>
                     </field>
                 </page>
