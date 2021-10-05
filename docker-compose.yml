@@ -10,11 +10,13 @@ services:
     networks:
       - backend
     volumes:
-      - "./data/postgres/11/pgdata:/var/lib/postgresql/data/pgdata"
+      # - "./data/postgres/11/pgdata:/var/lib/postgresql/data/pgdata"
+      - "odoopgdata:/var/lib/postgresql/data/pgdata"
 
   odoo: &odoo
     image: pico-odoo13
     build: .
+    command: -- --dev reload,xml
     depends_on:
       - db
     networks:
@@ -56,5 +58,5 @@ networks:
     external: true
 volumes:
   todoopgdata:
-  # - odoopgdata
-  # - odoodata
+  odoopgdata:
+  # odoodata:
