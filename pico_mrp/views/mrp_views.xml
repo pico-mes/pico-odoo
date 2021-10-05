@@ -38,7 +38,28 @@
         <field name="model">mrp.production.pico.work.order</field>
         <field name="arch" type="xml">
           <form>
-            <field name="build_url"/>
+            <group>
+            <group>
+              <field label="Pico Work Order ID" name="pico_id"/>
+              <field name="process_id"/>
+            <field name="date_start"/>
+            <field name="date_complete"/>
+          </group>
+          <group>
+            <field name="state"/>
+            <field name="process_version"/>
+            <field name="is_set" invisible="1"/>
+            <button
+              type="object"
+              name="action_build_url"
+              string="Go to Build"
+              attrs="{'invisible': [('is_set', '=', True)]}"
+            />
+          </group>
+          </group>
+          <group>
+            <field name="attr_value_ids" widget="many2many_tags"/>
+          </group>
           </form>
         </field>
     </record>
