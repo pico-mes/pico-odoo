@@ -169,7 +169,12 @@ class MRPPicoWorkOrder(models.Model):
     date_complete = fields.Datetime(string='Completed At')
     attr_value_ids = fields.One2many('mrp.pico.work.order.attr.value', 'work_order_id', string='Attr. Values')
     build_url = fields.Char()
+    show_build_url = fields.Boolean()
     process_version = fields.Char()
+    is_set = fields.Boolean(compute="_set_is_set")
+
+    def _set_is_set(self):
+        self.is_set = not self.build_url
 
     def pico_create(self):
         self._pico_create()
@@ -225,6 +230,7 @@ class MRPPicoWorkOrder(models.Model):
             write_vals['date_complete'] = process_datetime(values['completedAt'])
         if 'buildUrl' in values:
             write_vals['build_url'] = values['buildUrl']
+            write_vals['show_build_url'] = values['buildUrl'] != ""
         if 'processVersion' in values:
             write_vals['process_version'] = values['processVersion']
         if 'attributes' in values:
@@ -286,6 +292,11 @@ class MRPPicoWorkOrder(models.Model):
             return None
         return attr_values[0].value
 
+    def action_build_url(self):
+        self.ensure_one()
+        if self.build_url != None:
+            return {'type': 'ir.actions.act_url', 'url': self.build_url, 'target': 'new'}
+        return {}
 
 class MRPPicoWorkOrderAttrValue(models.Model):
     _name = 'mrp.pico.work.order.attr.value'

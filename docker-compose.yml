@@ -16,7 +16,7 @@ services:
   odoo: &odoo
     image: pico-odoo13
     build: .
-    command: -- --dev reload,xml
+    command: -- --dev reload,xml -u pico_mrp
     depends_on:
       - db
     networks:
