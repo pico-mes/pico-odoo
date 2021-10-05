@@ -19,12 +19,12 @@
                             <field name="state"/>
                             <field name="attr_value_ids" widget="many2many_tags"/>
                             <field name="process_version"/>
-                            <field name="is_set" invisible="1"/>
+                            <field name="build_url_set" invisible="1"/>
                             <button
                               type="object"
                               name="action_build_url"
                               string="Go to Build"
-                              attrs="{'invisible': [('is_set', '=', True)]}"
+                              attrs="{'invisible': [('build_url_set', '=', True)]}"
                             />
                         </tree>
                     </field>
@@ -48,12 +48,12 @@
           <group>
             <field name="state"/>
             <field name="process_version"/>
-            <field name="is_set" invisible="1"/>
+            <field name="build_url_set" invisible="1"/>
             <button
               type="object"
               name="action_build_url"
               string="Go to Build"
-              attrs="{'invisible': [('is_set', '=', True)]}"
+              attrs="{'invisible': [('build_url_set', '=', True)]}"
             />
           </group>
           </group>

@@ -171,10 +171,10 @@ class MRPPicoWorkOrder(models.Model):
     build_url = fields.Char()
     show_build_url = fields.Boolean()
     process_version = fields.Char()
-    is_set = fields.Boolean(compute="_set_is_set")
+    build_url_set = fields.Boolean(compute="_set_build_url_set")
 
-    def _set_is_set(self):
-        self.is_set = not self.build_url
+    def _set_build_url_set(self):
+        self.build_url_set = not self.build_url
 
     def pico_create(self):
         self._pico_create()
