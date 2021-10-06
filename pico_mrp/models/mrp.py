@@ -174,7 +174,8 @@ class MRPPicoWorkOrder(models.Model):
     build_url_set = fields.Boolean(compute="_set_build_url_set")
 
     def _set_build_url_set(self):
-        self.build_url_set = not self.build_url
+        for wo in self:
+            wo.build_url_set = not not wo.build_url
 
     def pico_create(self):
         self._pico_create()
@@ -294,9 +295,7 @@ class MRPPicoWorkOrder(models.Model):
 
     def action_build_url(self):
         self.ensure_one()
-        if self.build_url != None:
-            return {'type': 'ir.actions.act_url', 'url': self.build_url, 'target': 'new'}
-        return {}
+        return {'type': 'ir.actions.act_url', 'url': self.build_url, 'target': 'new'}
 
 class MRPPicoWorkOrderAttrValue(models.Model):
     _name = 'mrp.pico.work.order.attr.value'
