@@ -1,5 +1,7 @@
 from odoo import http
 
+from logging import getLogger
+_logger = getLogger(__name__)
 
 class PicoMESController(http.Controller):
     """Webhooks for callbacks from pico mes request api"""
@@ -15,6 +17,7 @@ class PicoMESController(http.Controller):
         if method == 'newWorkflowVersionMethod':
             http.request.env['pico.workflow'].sudo().process_pico_data(data)
         elif method == 'workOrderCompleteMethod':
+            _logger.info(data)
             http.request.env['mrp.production.pico.work.order'].sudo().pico_complete(data)
         else:
             raise Exception('Invalid method called. (01)')

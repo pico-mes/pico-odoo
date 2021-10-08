@@ -1,14 +1,18 @@
-from odoo import api, models, fields
+from odoo import api, models, fields, SUPERUSER_ID
 
 from odoo.addons.pico_mrp.models.pico_workflow import pico_api
 
+from logging import getLogger
+_logger = getLogger(__name__)
 
 class MRPProduction(models.Model):
+    # _inherit = ['mrp.production', 'mail.activity.mixin']
     _inherit = 'mrp.production'
 
     pico_process_id = fields.Many2one(related='bom_id.pico_process_id')
     pico_work_order_ids = fields.One2many('mrp.production.pico.work.order', 'production_id',
                                           string='Pico Work Orders')
+    no_finished_serial_err = ValueError('Process requires a finished serial, but none provided.')
 
     def _pico_create_work_orders(self):
         model = self.env['mrp.production.pico.work.order'].sudo()
@@ -82,7 +86,7 @@ class MRPProduction(models.Model):
             # requires finished serial number
             serial_name = work_orders.find_finished_serial()
             if not serial_name:
-                raise ValueError('Process requires a finished serial, but none provided.')
+                raise self.no_finished_serial_err
             serial = self._pico_find_or_create_serial(produce.product_id, serial_name)
             # Assign lot we found or created
             produce.finished_lot_id = serial
@@ -158,6 +162,14 @@ class MRPPicoWorkOrder(models.Model):
     date_start = fields.Datetime(string='Started At')
     date_complete = fields.Datetime(string='Completed At')
     attr_value_ids = fields.One2many('mrp.pico.work.order.attr.value', 'work_order_id', string='Attr. Values')
+    build_url = fields.Char()
+    show_build_url = fields.Boolean()
+    process_version = fields.Char()
+    build_url_set = fields.Boolean(compute="_set_build_url_set")
+
+    def _set_build_url_set(self):
+        for wo in self:
+            wo.build_url_set = not not wo.build_url
 
     def pico_create(self):
         self._pico_create()
@@ -211,6 +223,11 @@ class MRPPicoWorkOrder(models.Model):
             write_vals['date_start'] = process_datetime(values['startedAt'])
         if 'completedAt' in values:
             write_vals['date_complete'] = process_datetime(values['completedAt'])
+        if 'buildUrl' in values:
+            write_vals['build_url'] = values['buildUrl']
+            write_vals['show_build_url'] = values['buildUrl'] != ""
+        if 'processVersion' in values:
+            write_vals['process_version'] = values['processVersion']
         if 'attributes' in values:
             line_commands = []
             for attr_vals in values.get('attributes', []):
@@ -270,6 +287,9 @@ class MRPPicoWorkOrder(models.Model):
             return None
         return attr_values[0].value
 
+    def action_build_url(self):
+        self.ensure_one()
+        return {'type': 'ir.actions.act_url', 'url': self.build_url, 'target': 'new'}
 
 class MRPPicoWorkOrderAttrValue(models.Model):
     _name = 'mrp.pico.work.order.attr.value'

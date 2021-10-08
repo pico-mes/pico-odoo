@@ -43,39 +43,44 @@ Then within the section of interest, add log print statements as such:
 _logger.info('Pico Rocks! But check this variable... {}'.format(thing_i_want_2_log))
 ```
 
-# Development Environment Setup
+# Development
 
-### Copy nginx conf (if necessary)
+## Setup
 
-```
-#!/bin/bash
-cp nginx-site.conf.sample nginx-site.conf
-```
-
-### Copy odoo conf
+1. Copy odoo conf
 
 ```
-#!/bin/bash
 cp odoo.conf.sample odoo.conf
 ```
 
-### Set db name to odoo (default db) if you have more than 1 (if you ran test)
+1. Set db name to odoo (default db) in `odoo.conf`, if you have more than 1 (if you ran test)
 
 ```
 #odoo.conf
 db_name = odoo
 ```
 
-### Change nginx port to not conflict with others (if necessary)
+1. Spin up external `odoo` network if it does not already exist: `docker network create odoo`
+1. Confirm that api has access to this the `odoo` external network in pico-docker's docker-compose. There is an example of the setup in `docker-compose.overrides.example.yml` in pico-mes/pico-docker.
+1. add an entry to your `/etc/hosts` like this:
 
 ```
-#!/bin/bash
-cp docker-compose.override.yml.sample docker-compose.override.yml
+127.0.0.1       odoo
 ```
 
-### Create odoo directory, and make sure user odoo user in container has write access
+1. Install odoo
 
 ```
-#!/bin/bash
-mkdir -p var/data/odoo
+docker-compose run --rm odoo -- -i pico_mrp,base -d odoo --stop-after-init --db_host=db -r odoo -w odoo
+```
+
+5. `docker-compose up -d` it all
+
+## Running Tests
+
+Note: initial run will take a while, but subsequent runs should be quicker:
+
+```
+docker-compose run --rm odoo bash
+/opt/odoo/pico/test.sh
 ```

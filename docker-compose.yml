@@ -1,7 +1,7 @@
 version: '2'
 services:
 
-  db:
+  db: &db
     environment:
       - POSTGRES_PASSWORD=odoo_db_pass
       - POSTGRES_USER=odoo
@@ -10,32 +10,53 @@ services:
     networks:
       - backend
     volumes:
-      - "./var/data/postgres/11/pgdata:/var/lib/postgresql/data/pgdata"
+      # - "./data/postgres/11/pgdata:/var/lib/postgresql/data/pgdata"
+      - "odoopgdata:/var/lib/postgresql/data/pgdata"
 
-  odoo:
+  odoo: &odoo
     image: pico-odoo13
     build: .
+    command: -- --dev reload,xml -u pico_mrp
     depends_on:
       - db
     networks:
+      - odoo
       - backend
-      - frontend
+    ports:
+      - "8069:8069"
     volumes:
       - "./odoo.conf:/etc/odoo/odoo.conf"
-      - "./var/data/odoo:/var/lib/odoo"
+      - "./data/odoo:/var/lib/odoo" # MUST BE WRITABLE by odoo CONTAINER USER - mkdir -p data/odoo && chown 104 data/odoo
+      # - "odoodata:/var/lib/odoo" # MUST BE WRITABLE by odoo CONTAINER USER
       - "./:/opt/odoo/pico"
 
-  nginx:
-    depends_on:
-      - odoo
-    image: nginx:1.15
+  tdb:
+    <<: *db
     networks:
-      - frontend
+      - t
     volumes:
-      - "./nginx-site.conf:/etc/nginx/conf.d/default.conf:ro"
-      - "./nginx-proxy_params:/etc/nginx/proxy_params"
+      - "todoopgdata:/var/lib/postgresql/data/pgdata"
 
+  todoo:
+    command: /opt/odoo/pico/test.sh
+    <<: *odoo
+    depends_on:
+      - tdb
+    ports:
+      - "1111:8069"
+    networks:
+      - t
+    volumes:
+      - "./todoo.conf:/etc/odoo/odoo.conf"
+      # - "./data/odoo:/var/lib/odoo" # MUST BE WRITABLE by odoo CONTAINER USER
+      - "./:/opt/odoo/pico"
 
 networks:
+  t:
   backend:
-  frontend:
+  odoo:
+    external: true
+volumes:
+  todoopgdata:
+  odoopgdata:
+  # odoodata:
