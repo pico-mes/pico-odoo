@@ -44,7 +44,6 @@ class TestWorkflow(TransactionCase):
         self.product.bom_ids.bom_line_ids[1:].unlink()
 
         self.bom_activity = self.env.ref('pico_mrp.mail_activity_type_bom_map_needed')
-        self.missing_produce_serial_activity = self.env.ref('pico_mrp.mail_activity_type_missing_produce_serial')
         self.workflow_activities = defaultdict(lambda: self.env['mail.activity'].browse())
 
     def _product_add_workflow(self, workflow):
@@ -65,7 +64,7 @@ class TestWorkflow(TransactionCase):
 
     def _new_workflow_activities(self, workflow):
         activities = self.env['mail.activity'].search([
-            ('activity_type_id', 'in', [self.bom_activity.id, self.missing_produce_serial_activity.id]),
+            ('activity_type_id', '=', self.bom_activity.id),
             ('res_model_id', 'in', [self.env.ref('mrp.model_mrp_bom').id, self.env.ref('mrp.model_mrp_production').id]),
             ('res_id', 'not in', self.workflow_activities[workflow].ids),
         ])
@@ -314,9 +313,6 @@ class TestWorkflow(TransactionCase):
                 "workOrderId": "string"
             })
         self.assertEqual(context.exception, mo.no_finished_serial_err)
-        acts = self._new_workflow_activities(workflow)
-        print(acts[0].user_id)
-        self.assertEqual(len(acts),1)
 
         self.assertEqual(mo.pico_work_order_ids.state, 'running')
         self.assertFalse(mo.pico_work_order_ids.date_complete)
