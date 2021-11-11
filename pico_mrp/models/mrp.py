@@ -218,7 +218,13 @@ class MRPPicoWorkOrder(models.Model):
             if not self:
                 return
 
+        # if work order already completed, just update work order attributes
+        # leave state as done, and don't consume or produce
+        already_done = self.state == 'done'
+
         write_vals = {'state': 'pending'}
+        if already_done:
+            write_vals['state'] = 'done'
         if 'startedAt' in values:
             write_vals['date_start'] = process_datetime(values['startedAt'])
         if 'completedAt' in values:
@@ -230,6 +236,10 @@ class MRPPicoWorkOrder(models.Model):
             write_vals['process_version'] = values['processVersion']
         if 'attributes' in values:
             line_commands = []
+            if already_done:
+                #clear previous attributes
+                for attr_value_id in self.attr_value_ids:
+                    line_commands.append((2, attr_value_id.id, 0))
             for attr_vals in values.get('attributes', []):
                 attr = self.process_id.attr_ids.filtered(lambda a: a.pico_id == attr_vals['id'])
                 if attr:
@@ -240,6 +250,9 @@ class MRPPicoWorkOrder(models.Model):
             if line_commands:
                 write_vals['attr_value_ids'] = line_commands
         self.write(write_vals)
+        if already_done:
+            # don't consume or produce
+            return
         if self._workorder_should_consume_in_real_time():
             # only complete moves related to the completed process
             for move in self.production_id.move_raw_ids.filtered(lambda m: m.bom_line_id.pico_process_id == self.process_id):
