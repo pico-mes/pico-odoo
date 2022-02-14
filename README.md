@@ -71,10 +71,12 @@ db_name = odoo
 1. Install odoo
 
 ```
-docker-compose run --rm odoo -- -i pico_mrp,base -d odoo --stop-after-init --db_host=db -r odoo -w odoo
+docker-compose run --rm odoo -- /opt/odoo/pico/setup.sh
 ```
 
 5. `docker-compose up -d` it all
+
+1. Follow the Installation and Configuration section above, replacing the URL and API key with http://odoo:8069 and whatever your API key is....
 
 ## Running Tests
 
