@@ -38,8 +38,8 @@ services:
       - "todoopgdata:/var/lib/postgresql/data/pgdata"
 
   todoo:
-    command: /opt/odoo/pico/test.sh
     <<: *odoo
+    command: /opt/odoo/pico/test.sh
     depends_on:
       - tdb
     ports:
