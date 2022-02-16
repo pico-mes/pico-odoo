@@ -479,13 +479,43 @@ class TestWorkflow(TransactionCase):
         self._product_add_workflow(workflow)
         self.assertEqual(self.product.bom_ids.pico_process_id.pico_id, "370", "Expect Pico Process set")
 
-        mo = self.env['mrp.production'].create({
+        mo_props = {
             'product_id': self.product.id,
             'bom_id': self.product.bom_ids.id,
             'product_uom_id': self.product.uom_id.id,
             'product_qty': 1.0,
+            }
+
+        mo = self.env['mrp.production'].create(mo_props)
+        mocomplete = self.env['mrp.production'].create(mo_props)
+
+        # simulate complete
+        mocomplete.pico_work_order_ids.pico_complete({
+            "id": "string",
+            "attributes": [
+                # Finished Serial
+                {
+                    "id": "a1",
+                    "label": "A1",
+                    "value": "F101",
+                },
+                # Consumed Serial
+                {
+                    "id": "a2",
+                    "label": "A2",
+                    "value": "C101",
+                },
+            ],
+            "startedAt": "2020-10-01T10:40:50.043Z",
+            "completedAt": "2020-10-02T10:40:50.043Z",
+            "cycleTime": 0,
+            "workflowId": workflow.id,
+            "processId": process2.id,
+            "workOrderId": "no-idea-what-to-put-here",
         })
         self.assertEqual(mo.state, "draft")
+        self.assertEqual(mocomplete.state, "complete")
+
         # we have 1 inactive and 1 active version, but we will have pre-assigned the active one
         self.assertEqual(mo.pico_process_id, workflow.process_ids.sorted('sequence')[1])
 
