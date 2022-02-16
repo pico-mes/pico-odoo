@@ -33,9 +33,10 @@ class MRPProduction(models.Model):
         return res
 
     def _pico_delete_work_orders(self):
-        for work_order in self.pico_work_order_ids:
+        incomplete_work_orders = self.pico_work_order_ids.filtered(lambda wo: wo.state != "done")
+        for work_order in incomplete_work_orders:
             work_order.pico_delete()
-        self.pico_work_order_ids.unlink()
+            work_order.unlink()
 
     def action_cancel(self):
         res = super().action_cancel()
