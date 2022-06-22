@@ -162,6 +162,7 @@ class MRPPicoWorkOrder(models.Model):
     ], string='State', default='draft')
     date_start = fields.Datetime(string='Started At')
     date_complete = fields.Datetime(string='Completed At')
+    cycle_time = fields.Integer(string='Cycle Time')
     attr_value_ids = fields.One2many('mrp.pico.work.order.attr.value', 'work_order_id', string='Attr. Values')
     build_url = fields.Char()
     show_build_url = fields.Boolean()
@@ -230,6 +231,8 @@ class MRPPicoWorkOrder(models.Model):
             write_vals['date_start'] = process_datetime(values['startedAt'])
         if 'completedAt' in values:
             write_vals['date_complete'] = process_datetime(values['completedAt'])
+        if 'cycleTime' in values:
+            write_vals['cycle_time'] = values['cycleTime']
         if 'buildUrl' in values:
             write_vals['build_url'] = values['buildUrl']
             write_vals['show_build_url'] = values['buildUrl'] != ""
