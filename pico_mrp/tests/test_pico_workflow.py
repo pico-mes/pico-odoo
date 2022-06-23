@@ -275,7 +275,7 @@ class TestWorkflow(TransactionCase):
             ],
             "startedAt": "2020-10-01T10:40:50.043Z",
             "completedAt": "2020-10-02T10:40:50.043Z",
-            "cycleTime": 0,
+            "cycleTime": 123456,
             "workflowId": "string",
             "processId": "string",
             "workOrderId": "string"
@@ -284,6 +284,7 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(mo.pico_work_order_ids.state, 'done')
         self.assertEqual(mo.pico_work_order_ids.date_start, datetime(2020, 10, 1, 10, 40, 50))
         self.assertEqual(mo.pico_work_order_ids.date_complete, datetime(2020, 10, 2, 10, 40, 50))
+        self.assertEqual(mo.pico_work_order_ids.cycle_time, 123456)
         for sm in mo.move_raw_ids:
             self.assertEqual(sm.quantity_done, sm.product_uom_qty)
         self.assertEqual(mo.state, 'done')
@@ -394,7 +395,7 @@ class TestWorkflow(TransactionCase):
             ],
             "startedAt": "2020-10-01T10:40:50.043Z",
             "completedAt": "2020-10-02T10:40:50.043Z",
-            "cycleTime": 0,
+            "cycleTime": 123456,
             "workflowId": "string",
             "processId": "string",
             "workOrderId": "string"
@@ -403,6 +404,7 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(work_order1.state, 'pending')
         self.assertEqual(work_order1.date_start, datetime(2020, 10, 1, 10, 40, 50))
         self.assertEqual(work_order1.date_complete, datetime(2020, 10, 2, 10, 40, 50))
+        self.assertEqual(work_order1.cycle_time, 123456)
         self.assertEqual(work_order2.state, 'running')
 
         # because this MO was for 1.0 and all the lot/serial products are 1.0 qty,
@@ -425,7 +427,7 @@ class TestWorkflow(TransactionCase):
             ],
             "startedAt": "2020-10-03T10:40:50.043Z",
             "completedAt": "2020-10-04T10:40:50.043Z",
-            "cycleTime": 0,
+            "cycleTime": 654321,
             "workflowId": "string",
             "processId": "string",
             "workOrderId": "string"
@@ -434,6 +436,7 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(work_order2.state, 'done')
         self.assertEqual(work_order2.date_start, datetime(2020, 10, 3, 10, 40, 50))
         self.assertEqual(work_order2.date_complete, datetime(2020, 10, 4, 10, 40, 50))
+        self.assertEqual(work_order2.cycle_time, 654321)
 
         self.assertEqual(mo.state, 'done')
         self.assertEqual(mo.mapped('move_raw_ids.move_line_ids.qty_done'), [1.0], 'We over consumed.')
