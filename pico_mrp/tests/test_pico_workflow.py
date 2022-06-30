@@ -1,6 +1,7 @@
 from datetime import datetime
 from collections import defaultdict
 
+from odoo.tests import Form
 from odoo.tests.common import TransactionCase
 from odoo.exceptions import ValidationError, UserError
 from odoo.addons.pico_mrp.models.api import pico_requests
@@ -225,11 +226,12 @@ class TestWorkflow(TransactionCase):
         self._product_add_workflow(workflow)
         self.assertEqual(self.product.bom_ids.pico_process_id.pico_id, pid, "Expect Pico Process set")
 
-        mo = self.env['mrp.production'].create({
-            'product_id': self.product.id,
-            'bom_id': self.product.bom_ids.id,
-            'product_uom_id': self.product.uom_id.id,
-        })
+        mo_form = Form(self.env['mrp.production'])
+        mo_form.product_id =  self.product
+        mo_form.bom_id =  self.product.bom_ids[0]
+        mo_form.product_uom_id = self.product.uom_id
+        mo = mo_form.save()
+
         self.assertEqual(mo.state, "draft")
         # we have 1 inactive and 1 active version, but we will have pre-assigned the active one
         self.assertEqual(mo.pico_process_id, workflow.process_ids)
@@ -288,8 +290,10 @@ class TestWorkflow(TransactionCase):
         for sm in mo.move_raw_ids:
             self.assertEqual(sm.quantity_done, sm.product_uom_qty)
         self.assertEqual(mo.state, 'done')
-        self.assertEqual(mo.finished_move_line_ids.lot_id.name, 'F101')
+        self.assertEqual(mo.lot_producing_id.name, 'F101')
+
         self.assertEqual(mo.move_raw_ids.mapped('move_line_ids.lot_id.name'), ['C101'])
+        self.assertEqual(mo.finished_move_line_ids.lot_id.name, 'F101')
 
     def test_complete_missing_serial(self):
         mo,workflow = self.mrp_setup()
@@ -356,12 +360,14 @@ class TestWorkflow(TransactionCase):
         self._product_add_workflow(workflow)
         self.assertEqual(self.product.bom_ids.pico_process_id.pico_id, "370", "Expect Pico Process set")
 
-        mo = self.env['mrp.production'].create({
-            'product_id': self.product.id,
-            'bom_id': self.product.bom_ids.id,
-            'product_uom_id': self.product.uom_id.id,
-            'product_qty': 1.0,
-        })
+        mo_form = Form(self.env['mrp.production'])
+        mo_form.product_id =  self.product
+        mo_form.bom_id =  self.product.bom_ids[0]
+        mo_form.product_uom_id = self.product.uom_id
+        mo_form.product_qty = 1.0
+        mo = mo_form.save()
+
+
         self.assertEqual(mo.state, "draft")
         # we have 1 inactive and 1 active version, but we will have pre-assigned the active one
         self.assertEqual(mo.pico_process_id, workflow.process_ids.sorted('sequence')[1])
@@ -482,12 +488,13 @@ class TestWorkflow(TransactionCase):
         self._product_add_workflow(workflow)
         self.assertEqual(self.product.bom_ids.pico_process_id.pico_id, "370", "Expect Pico Process set")
 
-        mo = self.env['mrp.production'].create({
-            'product_id': self.product.id,
-            'bom_id': self.product.bom_ids.id,
-            'product_uom_id': self.product.uom_id.id,
-            'product_qty': 1.0,
-        })
+        mo_form = Form(self.env['mrp.production'])
+        mo_form.product_id =  self.product
+        mo_form.bom_id =  self.product.bom_ids[0]
+        mo_form.product_uom_id = self.product.uom_id
+        mo_form.product_qty = 1.0
+        mo = mo_form.save()
+
         self.assertEqual(mo.state, "draft")
         # we have 1 inactive and 1 active version, but we will have pre-assigned the active one
         self.assertEqual(mo.pico_process_id, workflow.process_ids.sorted('sequence')[1])

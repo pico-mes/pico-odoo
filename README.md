@@ -81,6 +81,5 @@ docker-compose run --rm odoo -- -i pico_mrp,base -d odoo --stop-after-init --db_
 Note: initial run will take a while, but subsequent runs should be quicker:
 
 ```
-docker-compose run --rm odoo bash
-/opt/odoo/pico/test.sh
+docker-compose up todoo
 ```

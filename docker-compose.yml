@@ -14,7 +14,7 @@ services:
       - "odoopgdata:/var/lib/postgresql/data/pgdata"
 
   odoo: &odoo
-    image: pico-odoo13
+    image: pico-odoo15
     build: .
     command: -- --dev reload,xml -u pico_mrp
     depends_on:

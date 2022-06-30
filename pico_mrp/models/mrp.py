@@ -80,35 +80,16 @@ class MRPProduction(models.Model):
 
     def _pico_complete(self, work_orders):
         # work_orders should be a 'complete set' of Pico Work Orders
-        produce = self.env['mrp.product.produce'].with_context(default_production_id=self.id).create({})
-        work_order_consumed_in_real_time = work_orders[0]._workorder_should_consume_in_real_time()
-        produce.qty_producing = 1
-        if produce.serial:
+
+        self.qty_producing = 1
+        if self.product_tracking:
             # requires finished serial number
             serial_name = work_orders.find_finished_serial()
             if not serial_name:
                 raise self.no_finished_serial_err
-            serial = self._pico_find_or_create_serial(produce.product_id, serial_name)
+            serial = self._pico_find_or_create_serial(self.product_id, serial_name)
             # Assign lot we found or created
-            produce.finished_lot_id = serial
-            if work_order_consumed_in_real_time:
-                # if it was consumed in real time, must have produced this one
-                # this prevents an exception being raised
-                # UserError('You can not consume without telling for which lot you consumed it')
-                self.move_raw_ids.mapped('move_line_ids').write({
-                    'lot_produced_ids': [(4, serial.id, 0)],
-                })
-        if not work_order_consumed_in_real_time:
-            # if we always do this, we will over-consume
-            produce._generate_produce_lines()
-            for line in produce.raw_workorder_line_ids.filtered(lambda line: line.product_tracking in ('lot', 'serial')):
-                serial_name = work_orders.find_consumed_serial(line.move_id.bom_line_id)
-                if not serial_name:
-                    raise ValueError('Stock Move requires a consumed serial, but none provided.')
-                serial = self._pico_find_or_create_serial(line.product_id, serial_name)
-                line.lot_id = serial
-        produce.do_produce()
-        # If this is the last qty to produce, we can finish the MRP Production
+            self.lot_producing_id = serial
         if self.state == 'to_close':
             self.button_mark_done()
 
@@ -197,12 +178,14 @@ class MRPPicoWorkOrder(models.Model):
     def _workorder_should_consume_in_real_time(self):
         # 1. Must be making a single 'unit' qty
         if self.production_id.product_qty != 1.0:
+            _logger.warning('product quantity > 1,  %s' % ([self.production_id.product_qty], ))
             return False
         # 2. Anything consuming lots/serials should be unit so that it is 'safe' to just swap the lot
         moves_with_multi_qty_lot = self.production_id.move_raw_ids.filtered(lambda m:
-                                                                            m.needs_lots
+                                                                            m.has_tracking in ('lot', 'serial')
                                                                             and m.product_uom_qty != 1.0)
         if moves_with_multi_qty_lot:
+            _logger.warning('moves_with multi qty')
             return False
         # 3. Should not do it if there are not multiple work orders, because then the 'set' completing is preferred
         if len(self.production_id.pico_work_order_ids) == 1:
@@ -257,36 +240,35 @@ class MRPPicoWorkOrder(models.Model):
         if already_done:
             # don't consume or produce
             return
-        if self._workorder_should_consume_in_real_time():
-            # only complete moves related to the completed process
-            for move in self.production_id.move_raw_ids.filtered(lambda m: m.bom_line_id.pico_process_id == self.process_id):
-                lot_id = False
-                if move.needs_lots:
-                    serial_name = self.find_consumed_serial(move.bom_line_id)
-                    if not serial_name:
-                        # do not want to raise error because we want the transaction to finish and queue
-                        # the completion
-                        break
-                    serial = self.production_id._pico_find_or_create_serial(move.product_id, serial_name)
-                    lot_id = serial.id
-                if move.move_line_ids:
-                    # Line was 'reserved', we may have a new serial, but we will for sure increment done qty
-                    move.move_line_ids.write({
+        # only complete moves related to the completed process
+        for move in self.production_id.move_raw_ids.filtered(lambda m: m.bom_line_id.pico_process_id == self.process_id):
+            lot_id = False
+            if move.has_tracking in ('lot', 'serial'):
+                serial_name = self.find_consumed_serial(move.bom_line_id)
+                if not serial_name:
+                    # do not want to raise error because we want the transaction to finish and queue
+                    # the completion
+                    break
+                serial = self.production_id._pico_find_or_create_serial(move.product_id, serial_name)
+                lot_id = serial.id
+            if move.move_line_ids:
+                # Line was 'reserved', we may have a new serial, but we will for sure increment done qty
+                move.move_line_ids.write({
+                    'qty_done': move.product_uom_qty,
+                    'lot_id': lot_id,
+                })
+            else:
+                # Was not reserved, create new line manually (will result in underflow if inventory isn't available)
+                move.write({
+                    'move_line_ids': [(0, 0, {
+                        'product_id': move.product_id.id,
+                        'location_id': move.location_id.id,
+                        'location_dest_id': move.location_dest_id.id,
+                        'product_uom_id': move.product_uom.id,
                         'qty_done': move.product_uom_qty,
                         'lot_id': lot_id,
-                    })
-                else:
-                    # Was not reserved, create new line manually (will result in underflow if inventory isn't available)
-                    move.write({
-                        'move_line_ids': [(0, 0, {
-                            'product_id': move.product_id.id,
-                            'location_id': move.location_id.id,
-                            'location_dest_id': move.location_dest_id.id,
-                            'product_uom_id': move.product_uom.id,
-                            'qty_done': move.product_uom_qty,
-                            'lot_id': lot_id,
-                        })]
-                    })
+                    })]
+                })
 
         self.production_id.pico_complete()
 
