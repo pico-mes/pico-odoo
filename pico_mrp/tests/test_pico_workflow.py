@@ -418,7 +418,7 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(mo.mapped('move_raw_ids.move_line_ids.qty_done'), [1.0])
         self.assertEqual(mo.mapped('move_raw_ids.move_line_ids.lot_id.name'), ['C101'])
 
-        self.assertEqual(mo.state, 'confirmed')  # not 'done'
+        self.assertEqual(mo.state, 'progress')  # not 'done'
 
         # simulate completion of second work order
         work_order2.with_context(skip_queue_job=True).pico_complete({
