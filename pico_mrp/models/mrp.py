@@ -16,13 +16,14 @@ class MRPProduction(models.Model):
 
     def _pico_create_work_orders(self):
         model = self.env['mrp.production.pico.work.order'].sudo()
-        for i in range(int(self.product_qty)):
-            for p in self.pico_process_id.process_ids:
-                work_order = model.create({
-                    'production_id': self.id,
-                    'process_id': p.id,
-                })
-                work_order.pico_create()
+        # oly ever create 1 pico work order, others will be created by back order
+        # for i in range(int(self.product_qty)):
+        for p in self.pico_process_id.process_ids:
+            work_order = model.create({
+                'production_id': self.id,
+                'process_id': p.id,
+            })
+            work_order.pico_create()
 
     def action_confirm(self):
         for production in self.filtered(lambda l: l.pico_process_id):
@@ -90,8 +91,13 @@ class MRPProduction(models.Model):
             serial = self._pico_find_or_create_serial(self.product_id, serial_name)
             # Assign lot we found or created
             self.lot_producing_id = serial
-        if self.state == 'to_close':
-            self.button_mark_done()
+        res = self.button_mark_done()
+        if res is not True:
+            if res['xml_id'] == 'mrp.action_mrp_production_backorder':
+                backorder = self.env['mrp.production.backorder'].with_context(res['context']).create({})
+                backorder.action_backorder()
+                return
+            raise ValueError('unexpected response: %s' % ([res], ))
 
 
 class MRPBoM(models.Model):
@@ -240,9 +246,12 @@ class MRPPicoWorkOrder(models.Model):
         if already_done:
             # don't consume or produce
             return
+        # assumes a work order is always producing 1
+        qty_producing = 1
         # only complete moves related to the completed process
         for move in self.production_id.move_raw_ids.filtered(lambda m: m.bom_line_id.pico_process_id == self.process_id):
             lot_id = False
+            # adjust qty_consuming
             if move.has_tracking in ('lot', 'serial'):
                 serial_name = self.find_consumed_serial(move.bom_line_id)
                 if not serial_name:
@@ -251,10 +260,12 @@ class MRPPicoWorkOrder(models.Model):
                     break
                 serial = self.production_id._pico_find_or_create_serial(move.product_id, serial_name)
                 lot_id = serial.id
+
+            qty_consuming = move.product_uom_qty * qty_producing/self.production_id.product_qty
             if move.move_line_ids:
                 # Line was 'reserved', we may have a new serial, but we will for sure increment done qty
                 move.move_line_ids.write({
-                    'qty_done': move.product_uom_qty,
+                    'qty_done': qty_consuming,
                     'lot_id': lot_id,
                 })
             else:
@@ -265,7 +276,7 @@ class MRPPicoWorkOrder(models.Model):
                         'location_id': move.location_id.id,
                         'location_dest_id': move.location_dest_id.id,
                         'product_uom_id': move.product_uom.id,
-                        'qty_done': move.product_uom_qty,
+                        'qty_done': qty_consuming,
                         'lot_id': lot_id,
                     })]
                 })
