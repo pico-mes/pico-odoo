@@ -181,23 +181,6 @@ class MRPPicoWorkOrder(models.Model):
         api = pico_api(self.env)
         api.delete_work_order(self.pico_id)
 
-    def _workorder_should_consume_in_real_time(self):
-        # 1. Must be making a single 'unit' qty
-        if self.production_id.product_qty != 1.0:
-            _logger.warning('product quantity > 1,  %s' % ([self.production_id.product_qty], ))
-            return False
-        # 2. Anything consuming lots/serials should be unit so that it is 'safe' to just swap the lot
-        moves_with_multi_qty_lot = self.production_id.move_raw_ids.filtered(lambda m:
-                                                                            m.has_tracking in ('lot', 'serial')
-                                                                            and m.product_uom_qty != 1.0)
-        if moves_with_multi_qty_lot:
-            _logger.warning('moves_with multi qty')
-            return False
-        # 3. Should not do it if there are not multiple work orders, because then the 'set' completing is preferred
-        if len(self.production_id.pico_work_order_ids) == 1:
-            return False
-        return True
-
     def pico_complete(self, values):
         def process_datetime(value):
             value = value.replace('T', ' ')

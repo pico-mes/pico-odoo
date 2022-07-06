@@ -247,7 +247,6 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(len(mo.pico_work_order_ids), 1)
         work_order = mo.pico_work_order_ids[0]
         self.assertTrue(all(wo.state == 'running' for wo in mo.pico_work_order_ids))
-        self.assertFalse(work_order._workorder_should_consume_in_real_time())  # should prefer to consume as 'set' of 1
 
         # The patched work order create process pattern in setUp()
         self.assertEqual(work_order.pico_id, '%s%s%s' % (
@@ -442,7 +441,6 @@ class TestWorkflow(TransactionCase):
         self.assertTrue(work_order2)
         self.assertEqual(work_order1.state, 'running')
         self.assertTrue(work_order2.state, 'running')
-        self.assertTrue(work_order1._workorder_should_consume_in_real_time())
 
         # simulate complete of one work order
         work_order1.pico_complete({
