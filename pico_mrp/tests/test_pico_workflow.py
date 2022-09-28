@@ -1,6 +1,7 @@
 from datetime import datetime
 from collections import defaultdict
 
+from odoo.tests import Form
 from odoo.tests.common import TransactionCase
 from odoo.exceptions import ValidationError, UserError
 from odoo.addons.pico_mrp.models.api import pico_requests
@@ -52,6 +53,7 @@ class TestWorkflow(TransactionCase):
         self.assertTrue(produce_process)
         self.assertEqual(len(produce_process), 1)
         self.product.bom_ids.pico_process_id = produce_process
+        self.product.bom_ids.consumption = 'strict'
         consume_process = workflow.process_ids.filtered(lambda p: p.attr_ids.filtered(lambda a: a.type == 'consume'))
         self.assertTrue(consume_process)
         self.assertEqual(len(consume_process), 1)
@@ -194,7 +196,7 @@ class TestWorkflow(TransactionCase):
         res = api.create_work_order('test', 'test')
         self.assertTrue(isinstance(res, dict))
 
-    def mrp_setup(self):
+    def mrp_setup(self, product_qty=1.0):
         self.assertFalse(self.product.bom_ids.pico_workflow_id.pico_id, "Expect no Pico Workflow set")
 
         workflow = self.env['pico.workflow'].with_user(self.admin_user).create({
@@ -225,11 +227,13 @@ class TestWorkflow(TransactionCase):
         self._product_add_workflow(workflow)
         self.assertEqual(self.product.bom_ids.pico_process_id.pico_id, pid, "Expect Pico Process set")
 
-        mo = self.env['mrp.production'].create({
-            'product_id': self.product.id,
-            'bom_id': self.product.bom_ids.id,
-            'product_uom_id': self.product.uom_id.id,
-        })
+        mo_form = Form(self.env['mrp.production'])
+        mo_form.product_id =  self.product
+        mo_form.bom_id =  self.product.bom_ids[0]
+        mo_form.product_uom_id = self.product.uom_id
+        mo_form.product_qty = product_qty
+        mo = mo_form.save()
+
         self.assertEqual(mo.state, "draft")
         # we have 1 inactive and 1 active version, but we will have pre-assigned the active one
         self.assertEqual(mo.pico_process_id, workflow.process_ids)
@@ -238,12 +242,11 @@ class TestWorkflow(TransactionCase):
 
         mo.action_confirm()
         self.assertEqual(mo.state, "confirmed", "Expect mo to be in confirm state")
-        # process created pico work order(s)
+        # process created pico work order
         self.assertTrue(mo.pico_work_order_ids)
         self.assertEqual(len(mo.pico_work_order_ids), 1)
-        work_order = mo.pico_work_order_ids
-        self.assertEqual(work_order.state, 'running')
-        self.assertFalse(work_order._workorder_should_consume_in_real_time())  # should prefer to consume as 'set' of 1
+        work_order = mo.pico_work_order_ids[0]
+        self.assertTrue(all(wo.state == 'running' for wo in mo.pico_work_order_ids))
 
         # The patched work order create process pattern in setUp()
         self.assertEqual(work_order.pico_id, '%s%s%s' % (
@@ -288,8 +291,64 @@ class TestWorkflow(TransactionCase):
         for sm in mo.move_raw_ids:
             self.assertEqual(sm.quantity_done, sm.product_uom_qty)
         self.assertEqual(mo.state, 'done')
-        self.assertEqual(mo.finished_move_line_ids.lot_id.name, 'F101')
+        self.assertEqual(mo.lot_producing_id.name, 'F101')
+
         self.assertEqual(mo.move_raw_ids.mapped('move_line_ids.lot_id.name'), ['C101'])
+        self.assertEqual(mo.finished_move_line_ids.lot_id.name, 'F101')
+
+    def test_mrp_multi_qty_with_backorder(self):
+        mo,_ = self.mrp_setup(2.0)
+
+        self.assertEqual(mo.mrp_production_backorder_count, 1)
+
+        # only create one work order, as rest will get created by back order
+        self.assertEqual(len(mo.pico_work_order_ids), 1)
+
+        # simulate complete first
+        first = mo.pico_work_order_ids[0]
+        first.pico_complete({
+            "id": "string",
+            "attributes": [
+                # Finished Serial
+                {
+                    "id": "a1",
+                    "label": "A1",
+                    "value": "F101",
+                },
+                # Consumed Serial
+                {
+                    "id": "a2",
+                    "label": "A2",
+                    "value": "C101",
+                },
+            ],
+            "startedAt": "2020-10-01T10:40:50.043Z",
+            "completedAt": "2020-10-02T10:40:50.043Z",
+            "cycleTime": 123456,
+            "workflowId": "string",
+            "processId": "string",
+            "workOrderId": "string"
+        })
+
+        self.assertEqual(first.state, 'done')
+        self.assertEqual(first.date_start, datetime(2020, 10, 1, 10, 40, 50))
+        self.assertEqual(first.date_complete, datetime(2020, 10, 2, 10, 40, 50))
+        self.assertEqual(first.cycle_time, 123456)
+        for sm in mo.move_raw_ids:
+            self.assertEqual(sm.quantity_done, sm.product_uom_qty)
+        self.assertEqual(mo.state, 'done')
+        self.assertEqual(len(mo.pico_work_order_ids), 1)
+        self.assertEqual(mo.mrp_production_backorder_count, 2)
+        self.assertEqual(mo.lot_producing_id.name, 'F101')
+
+        self.assertEqual(mo.move_raw_ids.mapped('move_line_ids.lot_id.name'), ['C101'])
+        self.assertEqual(mo.finished_move_line_ids.lot_id.name, 'F101')
+
+        backorders = mo.procurement_group_id.mrp_production_ids.filtered(lambda m: m.id != mo.id)
+        self.assertEqual(len(backorders), 1)
+        bo = backorders[0]
+        self.assertEqual(len(bo.pico_work_order_ids), 1)
+        self.assertEqual(bo.state, 'progress')
 
     def test_complete_missing_serial(self):
         mo,workflow = self.mrp_setup()
@@ -356,12 +415,14 @@ class TestWorkflow(TransactionCase):
         self._product_add_workflow(workflow)
         self.assertEqual(self.product.bom_ids.pico_process_id.pico_id, "370", "Expect Pico Process set")
 
-        mo = self.env['mrp.production'].create({
-            'product_id': self.product.id,
-            'bom_id': self.product.bom_ids.id,
-            'product_uom_id': self.product.uom_id.id,
-            'product_qty': 1.0,
-        })
+        mo_form = Form(self.env['mrp.production'])
+        mo_form.product_id =  self.product
+        mo_form.bom_id =  self.product.bom_ids[0]
+        mo_form.product_uom_id = self.product.uom_id
+        mo_form.product_qty = 1.0
+        mo = mo_form.save()
+
+
         self.assertEqual(mo.state, "draft")
         # we have 1 inactive and 1 active version, but we will have pre-assigned the active one
         self.assertEqual(mo.pico_process_id, workflow.process_ids.sorted('sequence')[1])
@@ -380,7 +441,6 @@ class TestWorkflow(TransactionCase):
         self.assertTrue(work_order2)
         self.assertEqual(work_order1.state, 'running')
         self.assertTrue(work_order2.state, 'running')
-        self.assertTrue(work_order1._workorder_should_consume_in_real_time())
 
         # simulate complete of one work order
         work_order1.pico_complete({
@@ -412,7 +472,7 @@ class TestWorkflow(TransactionCase):
         self.assertEqual(mo.mapped('move_raw_ids.move_line_ids.qty_done'), [1.0])
         self.assertEqual(mo.mapped('move_raw_ids.move_line_ids.lot_id.name'), ['C101'])
 
-        self.assertEqual(mo.state, 'confirmed')  # not 'done'
+        self.assertEqual(mo.state, 'progress')  # not 'done'
 
         # simulate completion of second work order
         work_order2.with_context(skip_queue_job=True).pico_complete({
@@ -482,12 +542,13 @@ class TestWorkflow(TransactionCase):
         self._product_add_workflow(workflow)
         self.assertEqual(self.product.bom_ids.pico_process_id.pico_id, "370", "Expect Pico Process set")
 
-        mo = self.env['mrp.production'].create({
-            'product_id': self.product.id,
-            'bom_id': self.product.bom_ids.id,
-            'product_uom_id': self.product.uom_id.id,
-            'product_qty': 1.0,
-        })
+        mo_form = Form(self.env['mrp.production'])
+        mo_form.product_id =  self.product
+        mo_form.bom_id =  self.product.bom_ids[0]
+        mo_form.product_uom_id = self.product.uom_id
+        mo_form.product_qty = 1.0
+        mo = mo_form.save()
+
         self.assertEqual(mo.state, "draft")
         # we have 1 inactive and 1 active version, but we will have pre-assigned the active one
         self.assertEqual(mo.pico_process_id, workflow.process_ids.sorted('sequence')[1])

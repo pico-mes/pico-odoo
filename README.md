@@ -10,9 +10,9 @@ Odoo manufacturing add-ons to connect to Pico MES
 
 ### Odoo.sh
 
-1. Add pico-odoo as a Git submodule following the [Odoo Submodule instructions](https://www.odoo.com/documentation/user/13.0/odoo_sh/advanced/submodules.html).
+1. Add pico-odoo as a Git submodule following the [Odoo Submodule instructions](https://www.odoo.com/documentation/user/15.0/odoo_sh/advanced/submodules.html).
    - Use this repository URL: `git@github.com:pico-mes/pico-odoo.git`
-   - Select branch: `13.0`
+   - Select branch: `15.0`
    - Path: `pico-mes/pico-odoo` _(can leave as the default)_
 
 # Installation and Configuration
@@ -81,6 +81,5 @@ docker-compose run --rm odoo -- -i pico_mrp,base -d odoo --stop-after-init --db_
 Note: initial run will take a while, but subsequent runs should be quicker:
 
 ```
-docker-compose run --rm odoo bash
-/opt/odoo/pico/test.sh
+docker-compose up todoo
 ```
